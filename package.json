@@ -1,0 +1,81 @@
+{
+  "name": "@re-cinq/eslint-plugin-re-lint",
+  "version": "0.1.0",
+  "description": "re:cinq house ESLint rules: complexity, naming, functions, comments, tests, layering, spec traceability, and jscpd-backed duplicate detection. Flat config, plugin key re-lint.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/re-cinq/re-lint.git"
+  },
+  "keywords": [
+    "eslint",
+    "eslintplugin",
+    "eslint-plugin",
+    "clean-code",
+    "jscpd"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./spec/*.js": {
+      "types": "./dist/vendor/spec/*.d.ts",
+      "default": "./dist/vendor/spec/*.js"
+    }
+  },
+  "imports": {
+    "#spec/*": "./dist/vendor/spec/*"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"src/rules/*.test.mjs\" \"src/rules/lib/*.test.mjs\" \"src/rules/lib/jscpd/*.test.mjs\"",
+    "lint": "eslint .",
+    "format": "prettier --write \"src/**/*.{ts,mjs}\" \"test-fixtures/**/*.{ts,mjs}\" README.md",
+    "format:check": "prettier --check \"src/**/*.{ts,mjs}\" README.md"
+  },
+  "peerDependencies": {
+    "@eslint/markdown": ">=7.0.0",
+    "eslint": ">=9.0.0",
+    "jscpd": ">=5.0.0",
+    "typescript": ">=5.4.0"
+  },
+  "peerDependenciesMeta": {
+    "@eslint/markdown": {
+      "optional": true
+    },
+    "jscpd": {
+      "optional": true
+    },
+    "typescript": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@eslint/markdown": "^8.0.3",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/eslint": "^9.6.1",
+    "@types/node": "^24.10.1",
+    "eslint": "^10.7.0",
+    "jscpd": "^5.1.2",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.63.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
