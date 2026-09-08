@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0
+## 1.0.0
 
 First release. Extracted from re-cinq/lore `tools/eslint-plugin-lore` (commit 4536b6c6f).
 
