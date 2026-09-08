@@ -25,45 +25,39 @@
  * h.response({ error: "busy", ...ids(inFlight) }).code(409)` would hand
  * `ids()` the un-narrowed type. Those stay as if-returns.
  *
- * Import targets resolve per file: `enforceTrue` from the shared package, and
- * `apiError` relatively from `apps/lore-api/src/server/api-error.js`. Outside
- * lore-api the pattern is still wrong but the helper's location is unknown, so
- * the report ships without a fix.
+ * Import targets come from two options and resolve per file:
+ *
+ *   enforceModule: { specifier, sourceDir? }   — where `enforceTrue` comes
+ *                                                from (same shape as
+ *                                                `prefer-enforce-true`)
+ *   errorModules:  [{ root, path }]            — each server that owns an
+ *                                                `apiError`; a file under
+ *                                                `root` imports `<root>/<path>`
+ *                                                by relative path
+ *
+ * Servers each own their own `apiError` because the helper builds a
+ * framework error, and a shared package that must stay lean cannot carry the
+ * framework dependency. Without `errorModules` the rule reports nothing. With
+ * it, a file under none of the roots (or linted without `enforceModule`) is
+ * still reported — the pattern is still wrong — but without a fix, since the
+ * helper's location is unknown.
  */
 
-import path from "node:path";
 import {
+  ENFORCE_MODULE_SCHEMA,
+  enforceSourceFor,
   importInjector,
   payloadDependsOnNarrowing,
   positiveConditionText,
+  relativeHelperPath,
   soleStatementOf,
 } from "./lib/guard-shape.mjs";
 
-const ENFORCE_SOURCE = "@re-cinq/lore-shared/lib/enforce.js";
-
-/**
- * Each hapi server owns its own `apiError`. They cannot share one: the helper
- * builds a Boom, and `libs/shared` deliberately carries no hapi dependency — it
- * is installed in the lean MCP adapter, which exists precisely not to drag the
- * servers' deps along (ADR-032, and the same reasoning `http/raw-body.ts`
- * states for refusing even a type-only hapi import).
- */
-const API_ERROR_HOMES = [
-  ["/apps/lore-api/src/", "server/api-error.js"],
-  ["/apps/floor/src/", "delivery/http/api-error.js"],
-];
-
 /** Where `apiError` lives relative to the file being fixed, or null where none does. */
-function apiErrorSourceFor(filename) {
-  const unix = filename.replace(/\\/g, "/");
-  for (const [marker, target] of API_ERROR_HOMES) {
-    const idx = unix.indexOf(marker);
-    if (idx === -1) continue;
-    const srcRoot = unix.slice(0, idx + marker.length);
-    const rel = path
-      .relative(path.dirname(unix), `${srcRoot}${target}`)
-      .replace(/\\/g, "/");
-    return rel.startsWith(".") ? rel : `./${rel}`;
+function apiErrorSourceFor(filename, errorModules) {
+  for (const { root, path: target } of errorModules) {
+    const relative = relativeHelperPath(filename, root, target);
+    if (relative) return relative;
   }
   return null;
 }
@@ -128,7 +122,27 @@ export default {
         "prefer enforceTrue(cond, apiError(status), message) over an if-return that answers h.response({ error }).code(4xx)",
     },
     fixable: "code",
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: {
+          enforceModule: ENFORCE_MODULE_SCHEMA,
+          errorModules: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                root: { type: "string" },
+                path: { type: "string" },
+              },
+              required: ["root", "path"],
+              additionalProperties: false,
+            },
+          },
+        },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       preferApiError:
         "Prefer enforceTrue(cond, apiError({{status}}), message) over an if-return refusal — it reads as a precondition and narrows the checked expression.",
@@ -136,11 +150,14 @@ export default {
   },
 
   create(context) {
+    const { enforceModule, errorModules } = context.options[0] ?? {};
+    if (!errorModules) return {};
+
     const sourceCode = context.sourceCode;
-    const apiErrorSource = apiErrorSourceFor(context.filename);
+    const apiErrorSource = apiErrorSourceFor(context.filename, errorModules);
     const enforceImport = importInjector(
       sourceCode.ast,
-      ENFORCE_SOURCE,
+      enforceModule ? enforceSourceFor(context.filename, enforceModule) : "",
       (value) => value.endsWith("enforce.js"),
     );
     const apiErrorImport = importInjector(
@@ -178,13 +195,14 @@ export default {
           node,
           messageId: "preferApiError",
           data: { status: String(refusal.status) },
-          fix: apiErrorSource
-            ? (fixer) => [
-                fixer.replaceText(node, call),
-                ...enforceImport(fixer, "enforceTrue"),
-                ...apiErrorImport(fixer, "apiError"),
-              ]
-            : null,
+          fix:
+            apiErrorSource && enforceModule
+              ? (fixer) => [
+                  fixer.replaceText(node, call),
+                  ...enforceImport(fixer, "enforceTrue"),
+                  ...apiErrorImport(fixer, "apiError"),
+                ]
+              : null,
         });
       },
     };

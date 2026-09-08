@@ -1,7 +1,7 @@
 /**
  * require-spec-link — every `it()`/`test()` must be linked to a spec or ADR.
  *
- * Lore's spec-traceability system authors the link INSIDE the spec.md/adr `.md`
+ * The spec-traceability convention authors the link INSIDE the spec.md/adr `.md`
  * as an inline trailing parenthetical — `Statement. ([validated by](test.ts#L42))`.
  * This rule inverts that view: it goes over each test declaration and fails the
  * ones that no spec or ADR statement references, so tests cannot silently drift
@@ -152,7 +152,7 @@ export default {
     ],
     messages: {
       unlinkedTest:
-        "Test {{name}} has no spec link — add an inline ([validated by]({{file}}#L{{line}})) to the statement it validates in a specs/**/*.md or adrs/**/*.md file (or, if this test isn't tied to a spec statement, it may not belong in the traceable suite).",
+        "Test {{name}} has no spec link — add an inline ([validated by]({{file}}#L{{line}})) to the statement it validates in a {{roots}} markdown file (or, if this test isn't tied to a spec statement, it may not belong in the traceable suite).",
     },
   },
 
@@ -175,7 +175,7 @@ export default {
       if (!warnedMissingCorpus.has(specsRoot)) {
         warnedMissingCorpus.add(specsRoot);
         console.warn(
-          `[lore/require-spec-link] no ${roots.join("/")} directory under ${specsRoot} — ` +
+          `require-spec-link: no ${roots.join("/")} directory under ${specsRoot} — ` +
             "run eslint from the repo root (or pass options.specsRoot). Skipping the spec-link check.",
         );
       }
@@ -207,7 +207,12 @@ export default {
         context.report({
           node: node.callee,
           messageId: "unlinkedTest",
-          data: { name, file: relPath, line: String(startLine) },
+          data: {
+            name,
+            file: relPath,
+            line: String(startLine),
+            roots: roots.map((root) => `${root}/**/*.md`).join(" or "),
+          },
         });
       },
     };

@@ -28,7 +28,9 @@ function propertyName(member) {
     return member.property.name;
   }
 
-  return member.property.type === "Literal" ? String(member.property.value) : null;
+  return member.property.type === "Literal"
+    ? String(member.property.value)
+    : null;
 }
 
 function isDiscriminant(node, discriminants) {
@@ -36,12 +38,18 @@ function isDiscriminant(node, discriminants) {
     return false;
   }
 
-  return discriminants.length === 0 || discriminants.includes(propertyName(node));
+  return (
+    discriminants.length === 0 || discriminants.includes(propertyName(node))
+  );
 }
 
 function isChainHead(node) {
   const parent = node.parent;
-  return !(parent && parent.type === "IfStatement" && parent.alternate === node);
+  return !(
+    parent &&
+    parent.type === "IfStatement" &&
+    parent.alternate === node
+  );
 }
 
 function chainTests(head) {
@@ -57,7 +65,11 @@ function chainTests(head) {
 }
 
 function comparedMember(test, discriminants) {
-  if (!test || test.type !== "BinaryExpression" || !EQUALITY_OPERATORS.has(test.operator)) {
+  if (
+    !test ||
+    test.type !== "BinaryExpression" ||
+    !EQUALITY_OPERATORS.has(test.operator)
+  ) {
     return null;
   }
 
@@ -67,7 +79,9 @@ function comparedMember(test, discriminants) {
     return left;
   }
 
-  return left.type === "Literal" && isDiscriminant(right, discriminants) ? right : null;
+  return left.type === "Literal" && isDiscriminant(right, discriminants)
+    ? right
+    : null;
 }
 
 function dominantDiscriminant(members, sourceCode) {
@@ -85,6 +99,30 @@ function dominantDiscriminant(members, sourceCode) {
   }
 
   return best;
+}
+
+const NO_DISPATCH = { discriminant: null, count: 0 };
+
+function switchDispatch(node, discriminants, sourceCode) {
+  if (!isDiscriminant(node.discriminant, discriminants)) {
+    return NO_DISPATCH;
+  }
+
+  const count = node.cases.filter(
+    (switchCase) => switchCase.test !== null,
+  ).length;
+  return { discriminant: sourceCode.getText(node.discriminant), count };
+}
+
+function ifChainDispatch(node, discriminants, sourceCode) {
+  if (!isChainHead(node)) {
+    return NO_DISPATCH;
+  }
+
+  const members = chainTests(node)
+    .map((test) => comparedMember(test, discriminants))
+    .filter((member) => member !== null);
+  return dominantDiscriminant(members, sourceCode);
 }
 
 export default {
@@ -115,7 +153,11 @@ export default {
     const discriminants = options.discriminants ?? [];
     const sourceCode = context.sourceCode;
 
-    function report(node, discriminant, count) {
+    function reportDispatch(node, { discriminant, count }) {
+      if (count < minCases) {
+        return;
+      }
+
       context.report({
         node,
         messageId: "preferPolymorphism",
@@ -125,29 +167,10 @@ export default {
 
     return {
       SwitchStatement(node) {
-        if (!isDiscriminant(node.discriminant, discriminants)) {
-          return;
-        }
-
-        const count = node.cases.filter((switchCase) => switchCase.test !== null).length;
-
-        if (count >= minCases) {
-          report(node, sourceCode.getText(node.discriminant), count);
-        }
+        reportDispatch(node, switchDispatch(node, discriminants, sourceCode));
       },
       IfStatement(node) {
-        if (!isChainHead(node)) {
-          return;
-        }
-
-        const members = chainTests(node)
-          .map((test) => comparedMember(test, discriminants))
-          .filter((member) => member !== null);
-        const { discriminant, count } = dominantDiscriminant(members, sourceCode);
-
-        if (count >= minCases) {
-          report(node, discriminant, count);
-        }
+        reportDispatch(node, ifChainDispatch(node, discriminants, sourceCode));
       },
     };
   },

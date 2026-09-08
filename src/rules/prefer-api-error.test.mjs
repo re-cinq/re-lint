@@ -4,13 +4,35 @@ import rule from "./prefer-api-error.mjs";
 const ruleTester = new RuleTester();
 
 const FILE = "/repo/apps/lore-api/src/api/routes/features/features.ts";
-const ENFORCE = `import { enforceTrue } from "@re-cinq/lore-shared/lib/enforce.js";`;
+const SPECIFIER = "@re-cinq/lore-shared/lib/enforce.js";
+const ERROR_MODULES = [
+  { root: "apps/lore-api/src", path: "server/api-error.js" },
+  { root: "apps/floor/src", path: "delivery/http/api-error.js" },
+];
+const OPTS = [
+  {
+    enforceModule: { specifier: SPECIFIER, sourceDir: "libs/shared/src" },
+    errorModules: ERROR_MODULES,
+  },
+];
+const ENFORCE = `import { enforceTrue } from "${SPECIFIER}";`;
 const API_ERROR = `import { apiError } from "../../../server/api-error.js";`;
 
 /** A guard only parses inside a handler, which is also where every real one lives. */
 const handler = (body) => `function handler() { ${body} }`;
 
-const valid = (body) => ({ code: handler(body), filename: FILE });
+const valid = (body) => ({
+  code: handler(body),
+  filename: FILE,
+  options: OPTS,
+});
+
+/** Every invalid case runs with both modules configured unless it says otherwise. */
+const withOptions = (testCase) => ({ options: OPTS, ...testCase });
+
+const REFUSAL = handler(
+  `if (!row) { return h.response({ error: "not found" }).code(404); }`,
+);
 
 ruleTester.run("prefer-api-error", rule, {
   valid: [
@@ -44,6 +66,13 @@ ruleTester.run("prefer-api-error", rule, {
     ),
     // already the canonical form
     valid(`enforceTrue(feature, apiError(404), "feature not found");`),
+    // without `errorModules` no server owns an apiError, so nothing is reported
+    { code: REFUSAL, filename: FILE, options: [] },
+    {
+      code: REFUSAL,
+      filename: FILE,
+      options: [{ enforceModule: { specifier: SPECIFIER } }],
+    },
   ],
   invalid: [
     {
@@ -149,12 +178,36 @@ ruleTester.run("prefer-api-error", rule, {
     },
     {
       // an app with no helper of its own is still reported, just without a fix
-      code: handler(
-        `if (!row) { return h.response({ error: "not found" }).code(404); }`,
-      ),
+      code: REFUSAL,
       output: null,
       errors: [{ messageId: "preferApiError" }],
       filename: "/repo/apps/mcp-server/src/thing.ts",
     },
-  ],
+    {
+      // without `enforceModule` the fix cannot name enforceTrue's source, so
+      // the report ships without one
+      code: REFUSAL,
+      options: [{ errorModules: ERROR_MODULES }],
+      output: null,
+      errors: [{ messageId: "preferApiError" }],
+      filename: FILE,
+    },
+    {
+      // a single errorModules entry with its own root and path
+      code: REFUSAL,
+      options: [
+        {
+          enforceModule: { specifier: "#enforce.js" },
+          errorModules: [
+            { root: "services/gateway", path: "errors/api-error.js" },
+          ],
+        },
+      ],
+      output: `import { enforceTrue } from "#enforce.js";\nimport { apiError } from "../errors/api-error.js";\n${handler(
+        `enforceTrue(row, apiError(404), "not found");`,
+      )}`,
+      errors: [{ messageId: "preferApiError" }],
+      filename: "/repo/services/gateway/routes/thing.ts",
+    },
+  ].map(withOptions),
 });

@@ -6,11 +6,14 @@ import rule from "./require-spec-link.mjs";
 
 const FIXTURES = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
-  "..", "..", "test-fixtures",
+  "..",
+  "..",
+  "test-fixtures",
   "require-spec-link",
 );
 
 const OPTS = [{ specsRoot: FIXTURES }];
+const ROOTS = "specs/**/*.md or adrs/**/*.md";
 
 function file(rel) {
   return path.join(FIXTURES, rel);
@@ -64,7 +67,12 @@ ruleTester.run("require-spec-link", rule, {
       errors: [
         {
           messageId: "unlinkedTest",
-          data: { name: "works", file: "tests/linked.test.ts", line: "1" },
+          data: {
+            name: "works",
+            file: "tests/linked.test.ts",
+            line: "1",
+            roots: ROOTS,
+          },
         },
       ],
     },
@@ -76,11 +84,21 @@ ruleTester.run("require-spec-link", rule, {
       errors: [
         {
           messageId: "unlinkedTest",
-          data: { name: "a", file: "tests/orphan.test.ts", line: "1" },
+          data: {
+            name: "a",
+            file: "tests/orphan.test.ts",
+            line: "1",
+            roots: ROOTS,
+          },
         },
         {
           messageId: "unlinkedTest",
-          data: { name: "b", file: "tests/orphan.test.ts", line: "2" },
+          data: {
+            name: "b",
+            file: "tests/orphan.test.ts",
+            line: "2",
+            roots: ROOTS,
+          },
         },
       ],
     },
@@ -92,7 +110,12 @@ ruleTester.run("require-spec-link", rule, {
       errors: [
         {
           messageId: "unlinkedTest",
-          data: { name: "case %s", file: "tests/orphan.test.ts", line: "1" },
+          data: {
+            name: "case %s",
+            file: "tests/orphan.test.ts",
+            line: "1",
+            roots: ROOTS,
+          },
         },
       ],
     },
@@ -105,7 +128,12 @@ ruleTester.run("require-spec-link", rule, {
       errors: [
         {
           messageId: "unlinkedTest",
-          data: { name: "case", file: "tests/orphan.test.ts", line: "1" },
+          data: {
+            name: "case",
+            file: "tests/orphan.test.ts",
+            line: "1",
+            roots: ROOTS,
+          },
         },
       ],
     },
@@ -117,7 +145,12 @@ ruleTester.run("require-spec-link", rule, {
       errors: [
         {
           messageId: "unlinkedTest",
-          data: { name: "x", file: "tests/orphan.spec.ts", line: "1" },
+          data: {
+            name: "x",
+            file: "tests/orphan.spec.ts",
+            line: "1",
+            roots: ROOTS,
+          },
         },
       ],
     },

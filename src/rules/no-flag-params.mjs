@@ -72,8 +72,7 @@ function isFlagParameter(param) {
 
 function destructuredPattern(param) {
   const target = unwrapParameter(param);
-  const pattern =
-    target.type === "AssignmentPattern" ? target.left : target;
+  const pattern = target.type === "AssignmentPattern" ? target.left : target;
 
   return pattern.type === "ObjectPattern" ? pattern : null;
 }
@@ -121,6 +120,51 @@ function flagPropertyValue(property) {
   return isBooleanLiteral(property.value) ? property.value : null;
 }
 
+function flagParamReport(node, name) {
+  return { node, messageId: "flagParam", data: { name } };
+}
+
+function flagArgumentReport(node) {
+  return { node, messageId: "flagArgument" };
+}
+
+function parameterReports(param, allowNamed) {
+  const pattern = destructuredPattern(param);
+
+  if (pattern) {
+    return allowNamed
+      ? []
+      : destructuredFlagNames(pattern).map((name) =>
+          flagParamReport(param, name),
+        );
+  }
+
+  if (!isFlagParameter(param)) {
+    return [];
+  }
+
+  const target = unwrapParameter(param);
+  const name =
+    target.type === "AssignmentPattern" ? target.left.name : target.name;
+
+  return [flagParamReport(param, name)];
+}
+
+function argumentReports(argument, allowNamed) {
+  if (isBooleanLiteral(argument)) {
+    return [flagArgumentReport(argument)];
+  }
+
+  if (allowNamed || argument.type !== "ObjectExpression") {
+    return [];
+  }
+
+  return argument.properties
+    .map(flagPropertyValue)
+    .filter((value) => value !== null)
+    .map(flagArgumentReport);
+}
+
 export default {
   meta: {
     type: "suggestion",
@@ -144,61 +188,18 @@ export default {
   },
   create(context) {
     const allowNamed = context.options[0]?.allowNamed ?? true;
-
-    function reportDestructured(param, pattern) {
-      for (const name of destructuredFlagNames(pattern)) {
-        context.report({ node: param, messageId: "flagParam", data: { name } });
-      }
-    }
-
-    function reportParameter(param) {
-      const pattern = destructuredPattern(param);
-
-      if (pattern) {
-        return allowNamed ? undefined : reportDestructured(param, pattern);
-      }
-
-      if (!isFlagParameter(param)) {
-        return;
-      }
-
-      const target = unwrapParameter(param);
-      const name =
-        target.type === "AssignmentPattern" ? target.left.name : target.name;
-
-      context.report({ node: param, messageId: "flagParam", data: { name } });
-    }
-
-    function reportObjectArgument(argument) {
-      const flagged = argument.properties
-        .map(flagPropertyValue)
-        .filter((value) => value !== null);
-
-      for (const value of flagged) {
-        context.report({ node: value, messageId: "flagArgument" });
-      }
-    }
-
-    function reportArgument(argument) {
-      if (isBooleanLiteral(argument)) {
-        context.report({ node: argument, messageId: "flagArgument" });
-
-        return;
-      }
-
-      if (allowNamed || argument.type !== "ObjectExpression") {
-        return;
-      }
-
-      reportObjectArgument(argument);
-    }
+    const report = (descriptor) => context.report(descriptor);
 
     function checkFunction(node) {
-      node.params.forEach(reportParameter);
+      node.params
+        .flatMap((param) => parameterReports(param, allowNamed))
+        .forEach(report);
     }
 
     function checkCall(node) {
-      node.arguments.forEach(reportArgument);
+      node.arguments
+        .flatMap((argument) => argumentReports(argument, allowNamed))
+        .forEach(report);
     }
 
     return {

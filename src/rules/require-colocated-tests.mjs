@@ -8,7 +8,8 @@ export default {
   meta: {
     type: "problem",
     docs: {
-      description: "tests must be colocated with their source, not in __tests__/",
+      description:
+        "tests must be colocated with their source, not in __tests__/",
     },
     schema: [],
     messages: {
@@ -23,7 +24,11 @@ export default {
 
     return {
       Program(node) {
-        context.report({ node, loc: { line: 1, column: 0 }, messageId: "colocate" });
+        context.report({
+          node,
+          loc: { line: 1, column: 0 },
+          messageId: "colocate",
+        });
       },
     };
   },

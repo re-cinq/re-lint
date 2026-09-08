@@ -65,8 +65,20 @@ ruleTester.run("require-intro-paragraph", rule, {
     { code: adrWithIntro, filename: "adrs/ADR-1.md" },
     // outside specs/ and adrs/ the rule does not apply
     { code: specNoIntro, filename: "docs/readme.md" },
+    // a `roots` option replaces the defaults, so adrs/ falls out of scope
+    {
+      code: adrNoIntro,
+      filename: "adrs/ADR-1.md",
+      options: [{ roots: { spec: ["specs"], adr: ["decisions"] } }],
+    },
   ],
   invalid: [
+    {
+      code: adrNoIntro,
+      filename: "docs/decisions/ADR-1.md",
+      options: [{ roots: { spec: ["specs"], adr: ["decisions"] } }],
+      errors: [{ messageId: "missingIntro", line: 1 }],
+    },
     {
       code: specNoIntro,
       filename: "specs/my-feature/spec.md",

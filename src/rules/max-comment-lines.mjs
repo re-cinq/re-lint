@@ -35,8 +35,7 @@ function groupLineRuns(comments) {
   let run = null;
 
   for (const comment of comments) {
-    const extendsRun =
-      run && comment.loc.start.line === run.endLine + 1;
+    const extendsRun = run && comment.loc.start.line === run.endLine + 1;
 
     if (extendsRun) {
       run.comments.push(comment);

@@ -6,13 +6,14 @@
  * link from the test's side). It walks each `.md` body, keeps the statements the
  * shared section heuristic calls *testable* (intro / vision / background /
  * rationale / open-question / limitation prose is exempt), and reports any with
- * no test link — see `@re-cinq/lore-shared/spec-status-coverage.js`.
+ * no test link — see `lib/spec-parsers.mjs`.
  *
- * Reporting is gated on the doc's normalized lifecycle status
- * (`@re-cinq/lore-shared/spec-status.js` — specs and ADRs fold into the same
- * buckets): a `rejected` (never accepted) or `retired` (shipped then
+ * Reporting is gated on the doc's normalized lifecycle status (specs and ADRs
+ * fold into the same buckets): a `rejected` (never accepted) or `retired` (shipped then
  * superseded/removed) doc skips the rule entirely; every other status warns.
- * Configured `warn` in eslint.config.mjs.
+ *
+ * Which folders hold the corpus comes from the `roots` option
+ * (`{ spec: ["specs"], adr: ["adrs"] }` by default — see `lib/doc-kind.mjs`).
  */
 
 import {
@@ -20,7 +21,7 @@ import {
   statusTier,
   unlinkedTestableStatements,
 } from "./lib/spec-parsers.mjs";
-import { docKind } from "./lib/doc-kind.mjs";
+import { DOC_ROOTS_SCHEMA, docKind } from "./lib/doc-kind.mjs";
 
 const EXCERPT_MAX = 60;
 
@@ -35,7 +36,13 @@ export default {
       description:
         "require every testable spec.md / ADR statement to carry an inline ([validated by](test.ts#Lline)) link. Skips rejected specs / superseded ADRs; warns on everything else.",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: { roots: DOC_ROOTS_SCHEMA },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       unlinkedStatement:
         'Testable statement in a {{status}} spec/ADR has no test link — add ([validated by](path/to/test.ts#Lline)) to the test that validates it, or move it under a narrative heading (Background / Rationale / Open Questions …) if it states no testable behaviour. Statement: "{{excerpt}}"',
@@ -43,7 +50,7 @@ export default {
   },
 
   create(context) {
-    const kind = docKind(context.filename);
+    const kind = docKind(context.filename, context.options[0]?.roots);
 
     if (!kind) {
       return {};

@@ -91,7 +91,10 @@ test("returns null when a Draft spec has no linked statements", () => {
 });
 
 test("returns null when a Shipped spec has every statement linked", () => {
-  assert.equal(statusMismatch(linkSecond(linkFirst(spec("Shipped"))), "spec"), null);
+  assert.equal(
+    statusMismatch(linkSecond(linkFirst(spec("Shipped"))), "spec"),
+    null,
+  );
 });
 
 test("returns null when an In Progress spec has some statements linked", () => {
@@ -132,14 +135,17 @@ test("expects in-progress when a Shipped spec has one of two statements linked",
 });
 
 test("expects shipped when a Draft spec has every statement linked", () => {
-  assert.deepEqual(statusMismatch(linkSecond(linkFirst(spec("Draft"))), "spec"), {
-    reason: "tier",
-    expected: "shipped",
-    actual: "draft",
-    testable: 2,
-    linked: 2,
-    line: 7,
-  });
+  assert.deepEqual(
+    statusMismatch(linkSecond(linkFirst(spec("Draft"))), "spec"),
+    {
+      reason: "tier",
+      expected: "shipped",
+      actual: "draft",
+      testable: 2,
+      linked: 2,
+      line: 7,
+    },
+  );
 });
 
 test("returns null for a Rejected spec regardless of coverage", () => {

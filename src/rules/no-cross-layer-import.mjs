@@ -26,7 +26,8 @@
  * entry may import nothing, which is what keeps the file honest as code grows.
  *
  * npm and node: specifiers are never governed — package.json already owns that.
- * Cross-package `@re-cinq/*` specifiers are, written verbatim in a list.
+ * Cross-package specifiers under a scope named in the `firstPartyScopes` option
+ * (default `[]`, e.g. `["@re-cinq"]`) are, written verbatim in a list.
  *
  * An entry may be a plain list, or `{ imports: [...], tests: [...] }` where
  * `tests` names what a *.test.ts file in that layer may ALSO import. A route
@@ -144,6 +145,7 @@ export default {
           layers: { type: "object" },
           aliases: { type: "object" },
           root: { type: "string" },
+          firstPartyScopes: { type: "array", items: { type: "string" } },
         },
         additionalProperties: false,
       },
@@ -158,6 +160,11 @@ export default {
 
   create(context) {
     const filename = context.filename ?? context.getFilename();
+    const firstPartyScopes = context.options[0]?.firstPartyScopes ?? [];
+    const isFirstParty = (spec) =>
+      firstPartyScopes.some((scope) =>
+        spec.startsWith(scope.endsWith("/") ? scope : `${scope}/`),
+      );
     const inline = context.options[0]?.layers;
     const config = inline
       ? {
@@ -226,21 +233,21 @@ export default {
 
         return;
       }
-      if (!spec.startsWith(".") && !spec.startsWith("@re-cinq/")) return;
-      const target = spec.startsWith("@re-cinq/")
+      const external = isFirstParty(spec);
+      if (!spec.startsWith(".") && !external) return;
+      const target = external
         ? spec.split("/").slice(0, 2).join("/")
         : targetFolder(spec);
-      reportUnless(node, target, spec);
+      reportUnless(node, target, spec, external);
     }
 
-    function reportUnless(node, target, spec) {
+    function reportUnless(node, target, spec, external = false) {
       if (allowed === null) {
         context.report({ node, messageId: "unlistedFolder", data: { folder } });
 
         return;
       }
       if (target === null || target === undefined) return;
-      const external = spec.startsWith("@re-cinq/");
       const inLayer =
         !external && (layer === "." ? target === "." : isWithin(target, layer));
       if (inLayer) return;

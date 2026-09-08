@@ -7,6 +7,7 @@ const ruleTester = new RuleTester({
 });
 
 const FLOOR = {
+  firstPartyScopes: ["@re-cinq"],
   layers: {
     "apps/floor": {
       ".": ["kernel", "jobs", "delivery"],
@@ -78,6 +79,12 @@ ruleTester.run("no-cross-layer-import", rule, {
       code: `import { z } from "zod";\nimport * as fs from "node:fs";`,
       filename: "apps/floor/src/kernel/queues.ts",
       options: opts,
+    },
+    {
+      name: "a scoped package outside firstPartyScopes is treated as npm",
+      code: `import { x } from "@re-cinq/lore-server-core";`,
+      filename: "apps/floor/src/jobs/review/code-review.ts",
+      options: [{ layers: FLOOR.layers }],
     },
     {
       name: "a package absent from the config is not checked",

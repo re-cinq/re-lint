@@ -226,11 +226,7 @@ export default {
                   fixes.push(fixer.replaceText(reference, shape.portTypeText)),
               );
               fixes.push(
-                ...removeImportSpecifierFixes(
-                  fixer,
-                  sourceCode.ast,
-                  className,
-                ),
+                ...removeImportSpecifierFixes(fixer, sourceCode.ast, className),
               );
             }
             return fixes;

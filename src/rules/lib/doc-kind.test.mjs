@@ -30,3 +30,34 @@ test("returns null for a doc outside specs/ and adrs/", () => {
 test("returns adr when both segments appear and adrs/ is the deeper one", () => {
   assert.equal(docKind("specs/my-feature/adrs/ADR-001.md"), "adr");
 });
+
+test("returns spec for a file under a configured spec root", () => {
+  assert.equal(
+    docKind("docs/features/widgets/spec.md", {
+      spec: ["docs/features"],
+      adr: [],
+    }),
+    "spec",
+  );
+});
+
+test("returns adr for a file under a configured adr root", () => {
+  assert.equal(
+    docKind("docs/decisions/0001-a-decision.md", {
+      spec: [],
+      adr: ["decisions"],
+    }),
+    "adr",
+  );
+});
+
+test("returns null for specs/ when the roots option does not name it", () => {
+  assert.equal(
+    docKind("specs/my-feature/spec.md", { spec: ["docs/features"], adr: [] }),
+    null,
+  );
+});
+
+test("falls back to the default for a missing roots key", () => {
+  assert.equal(docKind("adrs/ADR-001.md", { spec: ["docs"] }), "adr");
+});

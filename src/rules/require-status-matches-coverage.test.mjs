@@ -99,7 +99,10 @@ ruleTester.run("require-status-matches-coverage", rule, {
   valid: [
     // status matches coverage: none -> Draft, partial -> In Progress, full -> Shipped
     { code: spec("Draft"), filename: "specs/my-feature/spec.md" },
-    { code: linkFirst(spec("In Progress")), filename: "specs/my-feature/spec.md" },
+    {
+      code: linkFirst(spec("In Progress")),
+      filename: "specs/my-feature/spec.md",
+    },
     { code: linkBoth(spec("Shipped")), filename: "specs/my-feature/spec.md" },
     { code: adr("draft"), filename: "adrs/ADR-1.md" },
     { code: linkAdr(adr("accepted")), filename: "adrs/ADR-1.md" },
@@ -112,8 +115,20 @@ ruleTester.run("require-status-matches-coverage", rule, {
     // outside specs/ and adrs/ the rule does not apply
     { code: spec("Shipped"), filename: "docs/readme.md" },
     { code: specProseStatus, filename: "docs/readme.md" },
+    // a `roots` option replaces the defaults, so specs/ falls out of scope
+    {
+      code: spec("Shipped"),
+      filename: "specs/my-feature/spec.md",
+      options: [{ roots: { spec: ["docs/features"], adr: ["adrs"] } }],
+    },
   ],
   invalid: [
+    {
+      code: spec("Shipped"),
+      filename: "docs/features/my-feature/spec.md",
+      options: [{ roots: { spec: ["docs/features"], adr: ["adrs"] } }],
+      errors: [{ messageId: "statusMismatch", line: 7 }],
+    },
     {
       code: spec("Shipped"),
       filename: "specs/my-feature/spec.md",

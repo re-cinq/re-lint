@@ -16,9 +16,15 @@ const ROUTE = "/repo/src/app/api/repos/[owner]/[repo]/route.ts";
 ruleTester.run("default-export-matches-filename", rule, {
   valid: [
     // the convention: grepping the component's name finds its file
-    { code: `export default function StatusBadge() { return null; }`, filename: VIEW },
+    {
+      code: `export default function StatusBadge() { return null; }`,
+      filename: VIEW,
+    },
     // memo/forwardRef wrappers still name the component
-    { code: `import { memo } from "react"; function StatusBadge() { return null; } export default memo(StatusBadge);`, filename: VIEW },
+    {
+      code: `import { memo } from "react"; function StatusBadge() { return null; } export default memo(StatusBadge);`,
+      filename: VIEW,
+    },
     // a reserved Next file that only re-exports, plus route-segment config it MUST
     // declare literally (a re-exported `dynamic` is not reliably picked up)
     {

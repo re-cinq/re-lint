@@ -1,34 +1,41 @@
 /**
- * no-row-types-outside-models — a table's shape is declared once, in
- * `libs/shared/src/models/`.
+ * no-row-types-outside-models — a table's shape is declared once, in the models
+ * directory.
  *
- * Before that folder existed, one row was declared up to five times: in a port,
- * in its Pg adapter, in its in-memory double, in a route, and again in web-ui.
- * Two of those copies had already drifted to different spellings of the same key
- * before anyone noticed. This flags a NEW copy appearing outside the one home.
+ * Before such a folder existed in the codebase this was extracted from, one row
+ * was declared up to five times: in a port, in its DB adapter, in its in-memory
+ * double, in a route, and again in the UI. Two of those copies had already
+ * drifted to different spellings of the same key before anyone noticed. This
+ * flags a NEW copy appearing outside the one home.
  *
  * The signal is a type whose members are predominantly snake_case — TypeScript
- * fields are camelCase in this repo, so snake_case members mean the author was
+ * fields are camelCase by convention, so snake_case members mean the author was
  * transcribing columns.
+ *
+ * Options:
+ *   - `modelsDir` (default `""`): a path segment such as `"libs/shared/src/models"`,
+ *     matched against the forward-slash-normalised filename. Files under it are
+ *     the destination, not the offence. Empty means nothing is exempt by
+ *     directory.
+ *   - `exemptNames` (default `[]`): type names to skip — for a wire type held to
+ *     its model by a compile-time assertion rather than by being the model.
  *
  * What it deliberately does NOT flag, because each is legitimate and a rule that
  * cries wolf gets disabled rather than obeyed:
  *
- *   * anything inside `models/` — that is the destination, not the offence;
+ *   * anything under `modelsDir`;
  *   * fewer than {@link MIN_MEMBERS} members, which is a projection ("this read
  *     wants three columns"), not a table restatement;
- *   * test doubles and tests, which flatten columns they do not own on purpose
- *     (a fact's `agent_id` reaches it through the memory that produced it);
- *   * `PipelineTask`, the one wire type held to its model by a compile-time
- *     assertion rather than by being the model — flipping it is expand/contract
- *     work across deployed images, not a rename;
+ *   * tests and fixtures, which flatten columns they do not own on purpose;
+ *     in-memory test doubles that do the same are exempted by the consumer with
+ *     an `ignores:` glob;
  *   * an alias to ANOTHER type — `type X = components["schemas"]["Y"]` is exactly
  *     what this rule wants people to reach for. An alias to an object LITERAL
  *     (`type X = { full_name: string; … }`) is a declaration wearing a different
  *     keyword, and is treated as one.
  *
  * KNOWN LIMITATION: a shape from someone ELSE's API — GitHub's `default_branch`
- * and `html_url`, Anthropic's usage blocks — is snake_case for their reasons, not
+ * and `html_url`, a vendor's usage blocks — is snake_case for their reasons, not
  * because a column was transcribed, and nothing structural separates the two. The
  * rule flags those, and the message names the case so a reader can dismiss it
  * without wondering whether the rule knows something they do not. Exempting by
@@ -38,13 +45,8 @@
  * as a projection — which is not a codemod.
  */
 
-const MODELS_DIR = "/libs/shared/src/models/";
-
 /** Files that legitimately transcribe columns they do not own. */
-const EXEMPT_FILE = /(-memory\.ts|\.test\.ts|\.test\.tsx|\/fixtures\/)$/;
-
-/** Held to its model by an assertion instead of being one; see `types.ts`. */
-const EXEMPT_NAMES = new Set(["PipelineTask"]);
+const EXEMPT_FILE = /(\.test\.ts|\.test\.tsx|\/fixtures\/)$/;
 
 /**
  * Below this, a snake_case type is a projection rather than a table. Three is
@@ -62,37 +64,69 @@ function memberNames(body) {
     .filter((n) => typeof n === "string");
 }
 
+function underModelsDir(file, modelsDir) {
+  const segment = modelsDir.replace(/^\/+|\/+$/g, "");
+
+  return segment !== "" && file.includes(`/${segment}/`);
+}
+
+/** True when the file is the row types' home or a test that may flatten them. */
+function exemptFile(filename, modelsDir) {
+  const file = filename.replace(/\\/g, "/");
+
+  return underModelsDir(file, modelsDir) || EXEMPT_FILE.test(file);
+}
+
+/** True when a declaration's members are predominantly snake_case. */
+function looksLikeRow(members) {
+  const snake = members.filter(isSnake).length;
+
+  return members.length >= MIN_MEMBERS && snake * 2 > members.length;
+}
+
 export default {
   meta: {
     type: "problem",
     docs: {
       description:
-        "declare a table's shape once, in libs/shared/src/models/, instead of restating its columns",
+        "declare a table's shape once, in the models directory, instead of restating its columns",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: {
+          modelsDir: {
+            description:
+              "Path segment of the directory where row types belong; files under it are exempt",
+            type: "string",
+          },
+          exemptNames: {
+            description: "Type names the rule never reports",
+            type: "array",
+            items: { type: "string" },
+          },
+        },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       rowTypeOutsideModels:
-        '"{{name}}" restates a table\'s columns outside libs/shared/src/models/. Declare the table there (schema + inferred type + ColumnMap) and derive this from it — `fromRow`/`selectList` for a query, `wireSchema` for a published body. If this is a projection rather than a row, keep it and name the columns it actually reads.',
+        '"{{name}}" restates a table\'s columns outside the models directory. Declare the table there once and derive this type from that declaration. If this is a projection rather than a row, keep it and name the columns it actually reads.',
     },
   },
 
   create(context) {
-    const file = context.filename.replace(/\\/g, "/");
+    const options = context.options?.[0] ?? {};
+    const exemptNames = new Set(options.exemptNames ?? []);
 
-    if (file.includes(MODELS_DIR) || EXEMPT_FILE.test(file)) {
+    if (exemptFile(context.filename, options.modelsDir ?? "")) {
       return {};
     }
 
-    /** Report when a declaration's members are predominantly snake_case. */
     function check(id, members) {
       const name = id?.name;
 
-      if (!name || EXEMPT_NAMES.has(name) || members.length < MIN_MEMBERS) {
-        return;
-      }
-      const snake = members.filter(isSnake).length;
-
-      if (snake * 2 > members.length) {
+      if (name && !exemptNames.has(name) && looksLikeRow(members)) {
         context.report({
           node: id,
           messageId: "rowTypeOutsideModels",

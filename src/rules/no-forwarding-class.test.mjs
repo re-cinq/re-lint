@@ -6,7 +6,9 @@ import rule from "./no-forwarding-class.mjs";
 
 const FIXTURES = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
-  "..", "..", "test-fixtures",
+  "..",
+  "..",
+  "test-fixtures",
   "no-forwarding-class",
 );
 

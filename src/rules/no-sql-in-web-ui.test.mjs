@@ -24,7 +24,10 @@ ruleTester.run("no-sql-in-web-ui", rule, {
     },
     // paired keywords too far apart to be one statement
     {
-      code: "const prose = `SELECT ${'x'.repeat(1)} " + "a".repeat(600) + " FROM here`;",
+      code:
+        "const prose = `SELECT ${'x'.repeat(1)} " +
+        "a".repeat(600) +
+        " FROM here`;",
       filename: UI_FILE,
     },
   ],

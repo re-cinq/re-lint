@@ -18,6 +18,10 @@
  * indirectly, and chasing that needs type information this rule does not have.
  * The bar here is "the real subject is loaded", which is exactly the bar the
  * copy failed.
+ *
+ * First-party means a relative path, or a package under one of the npm scopes
+ * named in `firstPartyScopes` (default `[]`, e.g. `["@re-cinq"]` for a
+ * monorepo whose workspace packages a suite may reach through a barrel).
  */
 
 /** Suites that drive a system rather than one module, so no subject is implied. */
@@ -30,6 +34,14 @@ const EXEMPT_SUFFIXES = [
 
 /** The same exemption spelled as a directory, which is how lore-api spells it. */
 const EXEMPT_DIRS = ["integration-tests"];
+
+/** Accepts a scope with or without its trailing slash: `@org` and `@org/`. */
+function isUnderScope(source, scopes) {
+  return scopes.some((scope) => {
+    const prefix = scope.endsWith("/") ? scope : `${scope}/`;
+    return source.startsWith(prefix);
+  });
+}
 
 /** `/a/b/scoring.test.ts` → `scoring`; null when this is not a test file. */
 function subjectOf(filename) {
@@ -68,14 +80,14 @@ function subjectOf(filename) {
  * another builtin (`node:crypto` under a hand-rolled HMAC) is a re-implementation
  * wearing an import.
  */
-function loadsRealSubject(source) {
-  // First-party: a relative path, or one of this repo's workspace packages.
+function loadsRealSubject(source, firstPartyScopes) {
+  // First-party: a relative path, or a package under a configured scope.
   // No test-runner exclusion is needed — "vitest", "node:test", "@jest/globals",
   // "chai" and "assert" all fail every check already, so an explicit guard for
   // them never changed the answer.
   return (
     source.startsWith(".") ||
-    source.startsWith("@re-cinq/") ||
+    isUnderScope(source, firstPartyScopes) ||
     source === "node:fs" ||
     source === "fs"
   );
@@ -88,7 +100,15 @@ export default {
       description:
         "a test file must load the real thing it tests — a first-party module, or the artifact it reads from disk",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: {
+          firstPartyScopes: { type: "array", items: { type: "string" } },
+        },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       noSubjectImport:
         "This test loads nothing real — no first-party module, and no file read from disk — so nothing here can fail when production code changes. A test that re-implements its subject (`{{subject}}`) proves only that the copy still agrees with itself.",
@@ -102,6 +122,7 @@ export default {
       return {};
     }
 
+    const firstPartyScopes = context.options[0]?.firstPartyScopes ?? [];
     let importsSubject = false;
 
     return {
@@ -111,7 +132,7 @@ export default {
           return;
         }
 
-        if (loadsRealSubject(node.source.value)) {
+        if (loadsRealSubject(node.source.value, firstPartyScopes)) {
           importsSubject = true;
         }
       },
@@ -124,7 +145,7 @@ export default {
         if (
           node.source.type === "Literal" &&
           typeof node.source.value === "string" &&
-          loadsRealSubject(node.source.value)
+          loadsRealSubject(node.source.value, firstPartyScopes)
         ) {
           importsSubject = true;
         }

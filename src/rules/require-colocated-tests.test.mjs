@@ -5,7 +5,10 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("require-colocated-tests", rule, {
   valid: [
-    { code: `const a = 1;`, filename: "/repo/libs/shared/src/agent-id.test.ts" },
+    {
+      code: `const a = 1;`,
+      filename: "/repo/libs/shared/src/agent-id.test.ts",
+    },
     { code: `const a = 1;`, filename: "/repo/libs/shared/src/agent-id.ts" },
     // a plain dir literally named tests (not __tests__) is fine
     { code: `const a = 1;`, filename: "/repo/apps/floor/src/tests-helper.ts" },

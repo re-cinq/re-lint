@@ -1,23 +1,28 @@
 /**
- * no-infra-sdk-in-floor — the Floor reaches infrastructure through
- * `@re-cinq/lore-shared` port adapters bound as lazy singletons in `kernel/`
- * (ADR-024 "Floor data access"); it never talks to an infra SDK directly.
- * Flags static imports, dynamic `import()`, and `require()` of the forbidden
- * SDKs anywhere under `apps/floor/src/`.
+ * no-forbidden-imports — a layer that reaches infrastructure through port
+ * adapters never talks to the infra SDK directly. Flags static imports, dynamic
+ * `import()`, and `require()` of any configured specifier, matched exactly or as
+ * a `specifier/` subpath prefix (`@google-cloud/storage/build/src/bucket.js` is
+ * the same SDK as `@google-cloud/storage`).
  *
- * Detect-only: the fix is moving the code behind a shared port, not a rewrite.
+ * Option `forbidden` (default `[]`): a list of `{ specifier, message? }`. The
+ * report reads the entry's `message` when given, otherwise a generic one naming
+ * the specifier. No path gate of its own: the consumer scopes it to the layer in
+ * question with a `files:` glob.
  *
- * `@google-cloud/opentelemetry-*` stays allowed on purpose — otel-init.ts is
- * process-level telemetry bootstrap, not domain behavior behind a port.
+ * Detect-only: the fix is moving the code behind a port, not a rewrite.
  */
 
-const FLOOR_MARKER = "/apps/floor/src/";
-const FORBIDDEN = ["@google-cloud/storage"];
+function findForbidden(value, forbidden) {
+  if (typeof value !== "string") {
+    return null;
+  }
 
-function forbiddenSource(value) {
   return (
-    typeof value === "string" &&
-    FORBIDDEN.some((sdk) => value === sdk || value.startsWith(`${sdk}/`))
+    forbidden.find(
+      ({ specifier }) =>
+        value === specifier || value.startsWith(`${specifier}/`),
+    ) ?? null
   );
 }
 
@@ -26,26 +31,58 @@ export default {
     type: "problem",
     docs: {
       description:
-        "disallow direct infra SDK imports in apps/floor — go through @re-cinq/lore-shared port adapters bound in kernel/",
+        "disallow importing configured module specifiers (and their subpaths) in the files the rule is scoped to",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: {
+          forbidden: {
+            description:
+              "Module specifiers that may not be imported; a subpath under a specifier counts as the same module",
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                specifier: { type: "string" },
+                message: { type: "string" },
+              },
+              required: ["specifier"],
+              additionalProperties: false,
+            },
+          },
+        },
+        additionalProperties: false,
+      },
+    ],
     messages: {
-      infraSdkInFloor:
-        "The Floor reaches infrastructure through @re-cinq/lore-shared port adapters bound in kernel/ — don't import {{sdk}} directly.",
+      forbiddenImport:
+        "'{{specifier}}' may not be imported here — reach it through the layer that owns it.",
+      forbiddenImportCustom: "{{message}}",
     },
   },
 
   create(context) {
-    if (!context.filename.replace(/\\/g, "/").includes(FLOOR_MARKER)) {
-      return {};
-    }
+    const forbidden = context.options?.[0]?.forbidden ?? [];
 
     function reportIfForbidden(node, value) {
-      if (!forbiddenSource(value)) return;
+      const entry = findForbidden(value, forbidden);
+      if (!entry) return;
+
+      if (entry.message) {
+        context.report({
+          node,
+          messageId: "forbiddenImportCustom",
+          data: { message: entry.message },
+        });
+
+        return;
+      }
+
       context.report({
         node,
-        messageId: "infraSdkInFloor",
-        data: { sdk: value },
+        messageId: "forbiddenImport",
+        data: { specifier: entry.specifier },
       });
     }
 

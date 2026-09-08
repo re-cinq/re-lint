@@ -6,6 +6,7 @@ const ruleTester = new RuleTester({
   languageOptions: { parser: tsParser },
 });
 const F = "/repo/libs/shared/src/scoring.test.ts";
+const SCOPED = [{ firstPartyScopes: ["@re-cinq"] }];
 
 ruleTester.run("test-imports-its-subject", rule, {
   valid: [
@@ -26,6 +27,13 @@ ruleTester.run("test-imports-its-subject", rule, {
     {
       code: `import { score } from "@re-cinq/lore-shared";`,
       filename: F,
+      options: SCOPED,
+    },
+    // The scope may be spelled with its trailing slash as well.
+    {
+      code: `import { score } from "@re-cinq/lore-shared";`,
+      filename: F,
+      options: [{ firstPartyScopes: ["@re-cinq/"] }],
     },
     // A facet-named suite reaching its subject by a different filename: this is
     // the common, legitimate shape the first cut of this rule wrongly flagged.
@@ -81,6 +89,19 @@ ruleTester.run("test-imports-its-subject", rule, {
     {
       code: `import { describe, it, expect } from "vitest";\nfunction score() {}\nit("x", () => {});`,
       filename: F,
+      errors: [{ messageId: "noSubjectImport" }],
+    },
+    // With no first-party scope configured, a scoped package is third-party.
+    {
+      code: `import { score } from "@re-cinq/lore-shared";\nfunction score2() {}`,
+      filename: F,
+      errors: [{ messageId: "noSubjectImport" }],
+    },
+    // A package under a different scope than the configured one is not first-party.
+    {
+      code: `import { score } from "@other/scoring";`,
+      filename: F,
+      options: SCOPED,
       errors: [{ messageId: "noSubjectImport" }],
     },
     // Type-only imports execute nothing at runtime.

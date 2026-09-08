@@ -14,7 +14,10 @@ ruleTester.run("require-fetch-timeout", rule, {
     },
     // A caller-supplied signal is a timeout the caller owns.
     { code: `await fetch(url, { signal });`, filename: FILE },
-    { code: `await fetch(url, { method: "POST", body, signal: ctl.signal });`, filename: FILE },
+    {
+      code: `await fetch(url, { method: "POST", body, signal: ctl.signal });`,
+      filename: FILE,
+    },
     // Spread options may carry the signal; the rule cannot see inside and does not guess.
     { code: `await fetch(url, { ...opts });`, filename: FILE },
     // A method named fetch on something else is not the global.

@@ -21,11 +21,17 @@ const files = readdirSync(here)
 const exported = Object.keys(plugin.rules).sort();
 
 test("every rule file is exported from the plugin", () => {
-  assert.deepEqual(files.filter((f) => !exported.includes(f)), []);
+  assert.deepEqual(
+    files.filter((f) => !exported.includes(f)),
+    [],
+  );
 });
 
 test("every exported rule has a file behind it", () => {
-  assert.deepEqual(exported.filter((r) => !files.includes(r)), []);
+  assert.deepEqual(
+    exported.filter((r) => !files.includes(r)),
+    [],
+  );
 });
 
 test("every rule ships a RuleTester suite", () => {

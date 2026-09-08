@@ -10,7 +10,9 @@ import {
 
 const FIXTURES = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
-  "..", "..", "..",
+  "..",
+  "..",
+  "..",
   "test-fixtures",
   "require-spec-link",
 );

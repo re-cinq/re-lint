@@ -15,7 +15,9 @@
  * never disagree about what is linked. Skips `rejected` / `retired` docs via the
  * shared `statusTier`, and docs with no testable statements (no tier to infer).
  *
- * Configured `error` in eslint.config.mjs — see `lib/status-coverage.mjs`.
+ * Which folders hold the corpus comes from the `roots` option
+ * (`{ spec: ["specs"], adr: ["adrs"] }` by default) — see `lib/status-coverage.mjs`
+ * for the coverage walk.
  *
  * Deliberately carries no `fix`/`suggest`: the `format` CI job runs
  * `eslint --fix` and commits the result back, so a fixer here would silently
@@ -24,7 +26,7 @@
  */
 
 import { statusLabel } from "./lib/spec-parsers.mjs";
-import { docKind } from "./lib/doc-kind.mjs";
+import { DOC_ROOTS_SCHEMA, docKind } from "./lib/doc-kind.mjs";
 import { statusMismatch } from "./lib/status-coverage.mjs";
 
 const CORPUS = { spec: "spec", adr: "ADR" };
@@ -41,17 +43,23 @@ export default {
       description:
         "require every spec.md / ADR to declare a parseable lifecycle status that matches its test-link coverage: no links -> Draft, some -> In Progress, all -> Shipped. Skips rejected/retired docs and docs with no testable statements.",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: { roots: DOC_ROOTS_SCHEMA },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       untagged:
-        "This {{corpus}} declares no status the parsers can read, so its coverage cannot be checked and the web-UI renders no status pill. {{requirement}}",
+        "This {{corpus}} declares no status the parsers can read, so its coverage cannot be checked and no status can be rendered for it. {{requirement}}",
       statusMismatch:
         'Status "{{actual}}" does not match this {{corpus}}\'s test-link coverage — {{linked}} of {{testable}} testable statements carry a ([validated by](test.ts#Lline)) link. Either set the status to "{{expected}}", or link the remaining statements to the tests that validate them.',
     },
   },
 
   create(context) {
-    const kind = docKind(context.filename);
+    const kind = docKind(context.filename, context.options[0]?.roots);
 
     if (!kind) {
       return {};

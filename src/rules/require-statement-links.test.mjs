@@ -88,8 +88,20 @@ ruleTester.run("require-statement-links", rule, {
     { code: shippedNarrativeOnly, filename: "specs/my-feature/spec.md" },
     // outside specs/ and adrs/ the rule does not apply
     { code: shippedUnlinked, filename: "docs/readme.md" },
+    // a `roots` option replaces the defaults, so specs/ falls out of scope
+    {
+      code: shippedUnlinked,
+      filename: "specs/my-feature/spec.md",
+      options: [{ roots: { spec: ["docs/features"], adr: ["decisions"] } }],
+    },
   ],
   invalid: [
+    {
+      code: shippedUnlinked,
+      filename: "docs/features/my-feature/spec.md",
+      options: [{ roots: { spec: ["docs/features"], adr: ["decisions"] } }],
+      errors: [{ messageId: "unlinkedStatement", line: 11 }],
+    },
     {
       code: draftUnlinked,
       filename: "specs/my-feature/spec.md",
