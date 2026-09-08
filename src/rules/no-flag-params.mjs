@@ -124,6 +124,41 @@ function flagParamReport(node, name) {
   return { node, messageId: "flagParam", data: { name } };
 }
 
+/**
+ * `expect(value).toBe(true)` states what the value IS; the boolean is the
+ * assertion, not a switch the callee reads. The same goes for every matcher
+ * hanging off an `expect(...)` chain, including through `.not` and `.resolves`.
+ */
+function isExpectCall(node) {
+  return (
+    node.type === "CallExpression" &&
+    node.callee?.type === "Identifier" &&
+    node.callee.name === "expect"
+  );
+}
+
+function chainStep(node) {
+  if (node.type === "CallExpression") {
+    return node.callee;
+  }
+
+  return node.type === "MemberExpression" ? node.object : null;
+}
+
+function isAssertionCall(node) {
+  if (node.callee?.type !== "MemberExpression") {
+    return false;
+  }
+
+  let step = node.callee.object;
+
+  while (step && !isExpectCall(step)) {
+    step = chainStep(step);
+  }
+
+  return step !== null && step !== undefined;
+}
+
 function flagArgumentReport(node) {
   return { node, messageId: "flagArgument" };
 }
@@ -197,6 +232,10 @@ export default {
     }
 
     function checkCall(node) {
+      if (isAssertionCall(node)) {
+        return;
+      }
+
       node.arguments
         .flatMap((argument) => argumentReports(argument, allowNamed))
         .forEach(report);

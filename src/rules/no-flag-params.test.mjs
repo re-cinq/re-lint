@@ -8,6 +8,13 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-flag-params", rule, {
   valid: [
+    // an assertion states what the value is; the boolean is not a switch
+    `expect(ok).toBe(true);`,
+    `expect(ok).toBe(false);`,
+    `expect(result.ok).toEqual(true);`,
+    `expect(fn()).not.toBe(true);`,
+    `await expect(run()).resolves.toBe(false);`,
+    `expect(vi.mocked(fn)).toHaveReturnedWith(true);`,
     `function render(items: string[]) { return items.length; }`,
     `function render(items, count = 0) { return items.slice(count); }`,
     // a boolean computed at the call site is data, not a literal switch
