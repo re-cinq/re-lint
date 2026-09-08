@@ -54,6 +54,22 @@ function groupLineRuns(comments) {
   return runs;
 }
 
+/** Every comment span in the file as `{ node, count }` — one entry per block
+ * comment, one per run of consecutive line comments (reported at its first line). */
+function commentSpans(comments) {
+  const blocks = comments
+    .filter((comment) => comment.type === "Block")
+    .map((block) => ({
+      node: block,
+      count: block.loc.end.line - block.loc.start.line + 1,
+    }));
+  const runs = groupLineRuns(
+    comments.filter((comment) => comment.type === "Line"),
+  ).map((run) => ({ node: run.comments[0], count: run.comments.length }));
+
+  return [...blocks, ...runs];
+}
+
 export default {
   meta: {
     type: "suggestion",
@@ -78,7 +94,7 @@ export default {
   create(context) {
     const max = context.options[0]?.max ?? 1;
 
-    function report(node, count) {
+    function report({ node, count }) {
       if (max === 0) {
         context.report({ node, messageId: "noComments" });
 
@@ -97,22 +113,10 @@ export default {
         const comments = context.sourceCode
           .getAllComments()
           .filter((comment) => !isDirective(comment));
-        const blocks = comments.filter((c) => c.type === "Block");
-        const lines = comments.filter((c) => c.type === "Line");
 
-        for (const block of blocks) {
-          const span = block.loc.end.line - block.loc.start.line + 1;
-
-          if (span > max) {
-            report(block, span);
-          }
-        }
-
-        for (const run of groupLineRuns(lines)) {
-          if (run.comments.length > max) {
-            report(run.comments[0], run.comments.length);
-          }
-        }
+        commentSpans(comments)
+          .filter((span) => span.count > max)
+          .forEach(report);
       },
     };
   },

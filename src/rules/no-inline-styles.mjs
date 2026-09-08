@@ -25,41 +25,61 @@
  * shared with, say, canvas renderers, which cannot use classes at all.
  */
 
-/** `"--x"`, `` `--x` ``, and the `["--x" as string]` cast the TS types force. */
-function customPropertyName(node) {
-  if (node?.type === "TSAsExpression" || node?.type === "TSTypeAssertion") {
-    return customPropertyName(node.expression);
-  }
+const TYPE_CASTS = new Set(["TSAsExpression", "TSTypeAssertion"]);
 
-  if (node?.type === "Literal") {
-    return typeof node.value === "string" && node.value.startsWith("--");
-  }
-
-  if (node?.type === "TemplateLiteral" && node.expressions.length === 0) {
-    return node.quasis[0]?.value.cooked?.startsWith("--") === true;
-  }
-
-  return false;
+/** Unwraps the `as CSSProperties` cast callers need, since `CSSProperties` has
+ *  no index signature for `--*` keys — written around the object or around each key. */
+function unwrapTypeCast(node) {
+  return TYPE_CASTS.has(node?.type) ? unwrapTypeCast(node.expression) : node;
 }
 
-/**
- * An object literal that sets custom properties and nothing else. Unwraps the
- * `as CSSProperties` cast callers need, since `CSSProperties` has no index
- * signature for `--*` keys — written around the object or around each key.
- */
-function customPropertiesOnly(node) {
-  if (node?.type === "TSAsExpression" || node?.type === "TSTypeAssertion") {
-    return customPropertiesOnly(node.expression);
-  }
+function isCustomPropertyText(text) {
+  return typeof text === "string" && text.startsWith("--");
+}
 
-  if (node?.type !== "ObjectExpression" || node.properties.length === 0) {
+const CUSTOM_PROPERTY_KEY_SHAPES = {
+  Literal: (key) => isCustomPropertyText(key.value),
+  TemplateLiteral: (key) =>
+    key.expressions.length === 0 &&
+    isCustomPropertyText(key.quasis[0]?.value.cooked),
+};
+
+/** `"--x"`, `` `--x` ``, and the `["--x" as string]` cast the TS types force. */
+function isCustomPropertyKey(node) {
+  const key = unwrapTypeCast(node);
+  const matchesShape = CUSTOM_PROPERTY_KEY_SHAPES[key?.type];
+
+  return matchesShape ? matchesShape(key) : false;
+}
+
+function isCustomPropertyEntry(property) {
+  return property.type === "Property" && isCustomPropertyKey(property.key);
+}
+
+/** An object literal that sets custom properties and nothing else. */
+function customPropertiesOnly(node) {
+  const object = unwrapTypeCast(node);
+
+  if (object?.type !== "ObjectExpression" || object.properties.length === 0) {
     return false;
   }
 
-  return node.properties.every(
-    (property) =>
-      property.type === "Property" && customPropertyName(property.key),
+  return object.properties.every(isCustomPropertyEntry);
+}
+
+function isStyleAttribute(node) {
+  return node.name?.type === "JSXIdentifier" && node.name.name === "style";
+}
+
+function isCustomPropertiesValue(value) {
+  return (
+    value?.type === "JSXExpressionContainer" &&
+    customPropertiesOnly(value.expression)
   );
+}
+
+function elementName(owner) {
+  return owner?.type === "JSXIdentifier" ? owner.name : "element";
 }
 
 export default {
@@ -79,24 +99,14 @@ export default {
   create(context) {
     return {
       JSXAttribute(node) {
-        if (node.name?.type !== "JSXIdentifier" || node.name.name !== "style") {
+        if (!isStyleAttribute(node) || isCustomPropertiesValue(node.value)) {
           return;
         }
-
-        if (
-          node.value?.type === "JSXExpressionContainer" &&
-          customPropertiesOnly(node.value.expression)
-        ) {
-          return;
-        }
-        const owner = node.parent?.name;
 
         context.report({
           node,
           messageId: "inlineStyle",
-          data: {
-            element: owner?.type === "JSXIdentifier" ? owner.name : "element",
-          },
+          data: { element: elementName(node.parent?.name) },
         });
       },
     };

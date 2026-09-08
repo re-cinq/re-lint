@@ -62,56 +62,109 @@ function apiErrorSourceFor(filename, errorModules) {
   return null;
 }
 
+function isMemberCall(node) {
+  return (
+    node?.type === "CallExpression" && node.callee.type === "MemberExpression"
+  );
+}
+
+function calledMethodName(node) {
+  if (!isMemberCall(node) || node.callee.computed) return null;
+  return node.callee.property.name;
+}
+
+/** The single argument of `<receiver>.<methodName>(arg)`, or null for any other call shape. */
+function soleArgumentOfMethodCall(node, methodName) {
+  if (calledMethodName(node) !== methodName) return null;
+  return node.arguments.length === 1 ? node.arguments[0] : null;
+}
+
+function isRefusalStatus(status) {
+  return (
+    status?.type === "Literal" &&
+    typeof status.value === "number" &&
+    status.value >= 400
+  );
+}
+
+function isErrorProperty(property) {
+  return (
+    property.type === "Property" &&
+    !property.computed &&
+    (property.key.name ?? property.key.value) === "error"
+  );
+}
+
 /**
  * The `h.response({ … }).code(<4xx|5xx>)` refusal a return statement answers
  * with, decomposed into its message and its extra keys — or null for anything
  * else returning through the same call shape.
  */
 function refusalShape(argument) {
-  if (
-    argument?.type !== "CallExpression" ||
-    argument.callee.type !== "MemberExpression" ||
-    argument.callee.computed ||
-    argument.callee.property.name !== "code" ||
-    argument.arguments.length !== 1
-  ) {
-    return null;
-  }
-  const status = argument.arguments[0];
-  if (
-    status.type !== "Literal" ||
-    typeof status.value !== "number" ||
-    status.value < 400
-  ) {
-    return null;
-  }
-
-  const response = argument.callee.object;
-  if (
-    response.type !== "CallExpression" ||
-    response.callee.type !== "MemberExpression" ||
-    response.callee.computed ||
-    response.callee.property.name !== "response" ||
-    response.arguments.length !== 1 ||
-    response.arguments[0].type !== "ObjectExpression"
-  ) {
-    return null;
-  }
-
-  const body = response.arguments[0];
-  const message = body.properties.find(
-    (property) =>
-      property.type === "Property" &&
-      !property.computed &&
-      (property.key.name ?? property.key.value) === "error",
-  );
+  const status = soleArgumentOfMethodCall(argument, "code");
+  if (!isRefusalStatus(status)) return null;
+  const body = soleArgumentOfMethodCall(argument.callee.object, "response");
+  if (body?.type !== "ObjectExpression") return null;
+  const message = body.properties.find(isErrorProperty);
   if (!message) return null;
-
   return {
     status: status.value,
     message: message.value,
     extras: body.properties.filter((property) => property !== message),
   };
+}
+
+/**
+ * The refusal an if-return guard answers with, when rewriting it is safe —
+ * null for `if/else`, a non-refusal consequent, and a body whose narrowing the
+ * rewrite would strip.
+ */
+function rewritableRefusal(node) {
+  if (node.alternate) return null;
+  const returnStatement = soleStatementOf(node.consequent, "ReturnStatement");
+  if (!returnStatement) return null;
+  const refusal = refusalShape(returnStatement.argument);
+  if (!refusal) return null;
+  if (payloadDependsOnNarrowing(node.test, returnStatement.argument)) {
+    return null;
+  }
+  return refusal;
+}
+
+function apiErrorExtrasText(extras, sourceCode) {
+  if (!extras.length) return "";
+  const entries = extras.map((property) => sourceCode.getText(property));
+  return `, { ${entries.join(", ")} }`;
+}
+
+function enforceCallText(node, refusal, sourceCode) {
+  const condition = positiveConditionText(node.test, sourceCode);
+  const extras = apiErrorExtrasText(refusal.extras, sourceCode);
+  const message = sourceCode.getText(refusal.message);
+  return `enforceTrue(${condition}, apiError(${refusal.status}${extras}), ${message});`;
+}
+
+/**
+ * The fix factory for one file: `(node, call) => fix`, or a factory answering
+ * null when either helper's location is unknown for this file.
+ */
+function refusalFixFactory(context, enforceModule, errorModules) {
+  const apiErrorSource = apiErrorSourceFor(context.filename, errorModules);
+  if (!apiErrorSource || !enforceModule) return () => null;
+  const ast = context.sourceCode.ast;
+  const enforceImport = importInjector(
+    ast,
+    enforceSourceFor(context.filename, enforceModule),
+    (value) => value.endsWith("enforce.js"),
+  );
+  const apiErrorImport = importInjector(ast, apiErrorSource, (value) =>
+    value.endsWith("api-error.js"),
+  );
+  return (node, call) => (fixer) => [
+    fixer.replaceText(node, call),
+    ...enforceImport(fixer, "enforceTrue"),
+    ...apiErrorImport(fixer, "apiError"),
+  ];
 }
 
 export default {
@@ -154,55 +207,17 @@ export default {
     if (!errorModules) return {};
 
     const sourceCode = context.sourceCode;
-    const apiErrorSource = apiErrorSourceFor(context.filename, errorModules);
-    const enforceImport = importInjector(
-      sourceCode.ast,
-      enforceModule ? enforceSourceFor(context.filename, enforceModule) : "",
-      (value) => value.endsWith("enforce.js"),
-    );
-    const apiErrorImport = importInjector(
-      sourceCode.ast,
-      apiErrorSource ?? "api-error.js",
-      (value) => value.endsWith("api-error.js"),
-    );
+    const fixFor = refusalFixFactory(context, enforceModule, errorModules);
 
     return {
       IfStatement(node) {
-        if (node.alternate) return;
-
-        const returnStatement = soleStatementOf(
-          node.consequent,
-          "ReturnStatement",
-        );
-        if (!returnStatement) return;
-
-        const refusal = refusalShape(returnStatement.argument);
+        const refusal = rewritableRefusal(node);
         if (!refusal) return;
-
-        // The rewrite must not strip narrowing the refusal body depends on.
-        if (payloadDependsOnNarrowing(node.test, returnStatement.argument)) {
-          return;
-        }
-
-        const data = refusal.extras.length
-          ? `, { ${refusal.extras.map((p) => sourceCode.getText(p)).join(", ")} }`
-          : "";
-        const call =
-          `enforceTrue(${positiveConditionText(node.test, sourceCode)}, ` +
-          `apiError(${refusal.status}${data}), ${sourceCode.getText(refusal.message)});`;
-
         context.report({
           node,
           messageId: "preferApiError",
           data: { status: String(refusal.status) },
-          fix:
-            apiErrorSource && enforceModule
-              ? (fixer) => [
-                  fixer.replaceText(node, call),
-                  ...enforceImport(fixer, "enforceTrue"),
-                  ...apiErrorImport(fixer, "apiError"),
-                ]
-              : null,
+          fix: fixFor(node, enforceCallText(node, refusal, sourceCode)),
         });
       },
     };

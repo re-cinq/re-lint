@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { indexClones } from "./report.mjs";
 
-const side = (name, start, end, startColumn, endColumn) => ({
+const side = (name, [start, startColumn], [end, endColumn]) => ({
   name,
   start,
   end,
@@ -13,8 +13,8 @@ const side = (name, start, end, startColumn, endColumn) => ({
 const report = {
   duplicates: [
     {
-      firstFile: side("/abs/one.ts", 2, 64, 0, 1),
-      secondFile: side("/abs/two.ts", 10, 72, 4, 3),
+      firstFile: side("/abs/one.ts", [2, 0], [64, 1]),
+      secondFile: side("/abs/two.ts", [10, 4], [72, 3]),
       lines: 63,
       tokens: 328,
       format: "typescript",
@@ -55,8 +55,8 @@ test("two duplicates touching /abs/one.ts yield two clones under that file", () 
     duplicates: [
       report.duplicates[0],
       {
-        firstFile: side("/abs/three.ts", 1, 12, 0, 1),
-        secondFile: side("/abs/one.ts", 80, 91, 0, 1),
+        firstFile: side("/abs/three.ts", [1, 0], [12, 1]),
+        secondFile: side("/abs/one.ts", [80, 0], [91, 1]),
         lines: 12,
         tokens: 70,
       },

@@ -26,6 +26,34 @@ function findForbidden(value, forbidden) {
   );
 }
 
+function isRequireCallee(callee) {
+  return callee.type === "Identifier" && callee.name === "require";
+}
+
+function hasSingleLiteralArgument(node) {
+  return node.arguments.length === 1 && node.arguments[0].type === "Literal";
+}
+
+function isRequireCall(node) {
+  return isRequireCallee(node.callee) && hasSingleLiteralArgument(node);
+}
+
+function forbiddenReport(node, entry) {
+  if (entry.message) {
+    return {
+      node,
+      messageId: "forbiddenImportCustom",
+      data: { message: entry.message },
+    };
+  }
+
+  return {
+    node,
+    messageId: "forbiddenImport",
+    data: { specifier: entry.specifier },
+  };
+}
+
 export default {
   meta: {
     type: "problem",
@@ -67,23 +95,7 @@ export default {
 
     function reportIfForbidden(node, value) {
       const entry = findForbidden(value, forbidden);
-      if (!entry) return;
-
-      if (entry.message) {
-        context.report({
-          node,
-          messageId: "forbiddenImportCustom",
-          data: { message: entry.message },
-        });
-
-        return;
-      }
-
-      context.report({
-        node,
-        messageId: "forbiddenImport",
-        data: { specifier: entry.specifier },
-      });
+      if (entry) context.report(forbiddenReport(node, entry));
     }
 
     return {
@@ -96,12 +108,7 @@ export default {
         }
       },
       CallExpression(node) {
-        if (
-          node.callee.type === "Identifier" &&
-          node.callee.name === "require" &&
-          node.arguments.length === 1 &&
-          node.arguments[0].type === "Literal"
-        ) {
+        if (isRequireCall(node)) {
           reportIfForbidden(node, node.arguments[0].value);
         }
       },

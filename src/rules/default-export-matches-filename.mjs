@@ -69,43 +69,61 @@ const SEGMENT_CONFIG = new Set([
   "contentType",
 ]);
 
+/** Statement kinds a reserved file may always keep alongside its re-export. */
+const RESIDUE_ALWAYS_ALLOWED = new Set([
+  "ImportDeclaration",
+  "ExportAllDeclaration",
+  "TSTypeAliasDeclaration",
+  "TSInterfaceDeclaration",
+]);
+
+function declaredName(declaration) {
+  return declaration.id?.name ?? null;
+}
+
+// memo(Foo) / forwardRef(Foo) still name the component.
+function wrappedComponentName(call) {
+  const named = call.arguments.find((arg) => arg.type === "Identifier");
+
+  return named?.name ?? null;
+}
+
+const EXPORTED_NAME_BY_TYPE = {
+  Identifier: (declaration) => declaration.name,
+  FunctionDeclaration: declaredName,
+  ClassDeclaration: declaredName,
+  CallExpression: wrappedComponentName,
+};
+
 /** The name a default export declares, or null when it declares none. */
 function exportedName(declaration) {
-  if (!declaration) {
-    return null;
+  const nameOf = EXPORTED_NAME_BY_TYPE[declaration?.type];
+
+  return nameOf ? nameOf(declaration) : null;
+}
+
+function isSegmentConfigBinding(declarator) {
+  return (
+    declarator.id.type === "Identifier" &&
+    SEGMENT_CONFIG.has(declarator.id.name)
+  );
+}
+
+function isSegmentConfigDeclaration(declared) {
+  if (declared.type === "FunctionDeclaration") {
+    return declared.id ? SEGMENT_CONFIG.has(declared.id.name) : false;
   }
 
-  if (declaration.type === "Identifier") {
-    return declaration.name;
+  if (declared.type === "VariableDeclaration") {
+    return declared.declarations.every(isSegmentConfigBinding);
   }
 
-  if (
-    declaration.type === "FunctionDeclaration" ||
-    declaration.type === "ClassDeclaration"
-  ) {
-    return declaration.id ? declaration.id.name : null;
-  }
-
-  // memo(Foo) / forwardRef(Foo) still name the component.
-  if (declaration.type === "CallExpression") {
-    const named = declaration.arguments.find(
-      (arg) => arg.type === "Identifier",
-    );
-
-    return named ? named.name : null;
-  }
-
-  return null;
+  return false;
 }
 
 /** Statements a reserved file may keep alongside its re-export. */
 function isAllowedResidue(node) {
-  if (
-    node.type === "ImportDeclaration" ||
-    node.type === "ExportAllDeclaration" ||
-    node.type === "TSTypeAliasDeclaration" ||
-    node.type === "TSInterfaceDeclaration"
-  ) {
+  if (RESIDUE_ALWAYS_ALLOWED.has(node.type)) {
     return true;
   }
 
@@ -113,26 +131,111 @@ function isAllowedResidue(node) {
     return false;
   }
 
-  if (node.source) {
-    return true;
-  }
-  const declared = node.declaration;
-
-  if (!declared) {
+  if (node.source || !node.declaration) {
     return true;
   }
 
-  if (declared.type === "FunctionDeclaration") {
-    return declared.id ? SEGMENT_CONFIG.has(declared.id.name) : false;
+  return isSegmentConfigDeclaration(node.declaration);
+}
+
+function isResidue(node) {
+  return !isAllowedResidue(node);
+}
+
+function firstDeclaratorLabel(node) {
+  const first = node.declarations[0]?.id;
+
+  return first?.type === "Identifier" ? first.name : "a value";
+}
+
+/** A human-readable label for the statement that does not belong. */
+function statementLabel(node) {
+  if (node.type === "FunctionDeclaration" && node.id) {
+    return node.id.name;
   }
 
-  if (declared.type === "VariableDeclaration") {
-    return declared.declarations.every(
-      (d) => d.id.type === "Identifier" && SEGMENT_CONFIG.has(d.id.name),
-    );
+  if (node.type === "VariableDeclaration") {
+    return firstDeclaratorLabel(node);
   }
 
-  return false;
+  return "other code";
+}
+
+function findDefaultExport(program) {
+  return program.body.find(
+    (statement) => statement.type === "ExportDefaultDeclaration",
+  );
+}
+
+function reexportsDefault(statement) {
+  return (
+    statement.type === "ExportNamedDeclaration" &&
+    statement.source &&
+    statement.specifiers.some(
+      (specifier) => specifier.exported.name === "default",
+    )
+  );
+}
+
+function checkReservedFile(context, program, file) {
+  const defaultDecl = findDefaultExport(program);
+
+  if (defaultDecl) {
+    context.report({
+      node: defaultDecl,
+      messageId: "reservedInlineDefault",
+      data: { file },
+    });
+
+    return;
+  }
+
+  if (!program.body.some(reexportsDefault)) {
+    return;
+  }
+
+  for (const statement of program.body.filter(isResidue)) {
+    context.report({
+      node: statement,
+      messageId: "reservedNotPureReexport",
+      data: { file, name: statementLabel(statement) },
+    });
+  }
+}
+
+function checkNamedDefault(context, program, { file, stem }) {
+  const defaultDecl = findDefaultExport(program);
+
+  if (!defaultDecl) {
+    return;
+  }
+  const name = exportedName(defaultDecl.declaration);
+
+  if (name === null) {
+    context.report({
+      node: defaultDecl,
+      messageId: "unnamedDefault",
+      data: { file, stem },
+    });
+
+    return;
+  }
+
+  if (name !== stem) {
+    context.report({
+      node: defaultDecl.declaration.id ?? defaultDecl,
+      messageId: "nameMismatch",
+      data: { file, name },
+    });
+  }
+}
+
+function isSkippedFile(filename) {
+  return filename.includes(".test.") || filename.endsWith(".d.ts");
+}
+
+function reservedMode(context) {
+  return context.options?.[0]?.reserved ?? "error";
 }
 
 export default {
@@ -170,100 +273,24 @@ export default {
   create(context) {
     const filename = (context.filename ?? "").split("\\").join("/");
 
-    if (filename.includes(".test.") || filename.endsWith(".d.ts")) {
+    if (isSkippedFile(filename)) {
       return {};
     }
-    const base = filename.slice(filename.lastIndexOf("/") + 1);
-    const stem = base.replace(/\.(tsx|ts|jsx|js)$/, "");
-    const reservedMode = context.options?.[0]?.reserved ?? "error";
+    const file = filename.slice(filename.lastIndexOf("/") + 1);
+    const stem = file.replace(/\.(tsx|ts|jsx|js)$/, "");
+
+    if (FRAMEWORK_ENTRY.has(stem)) {
+      return {};
+    }
+
+    if (PAGE_LIKE.has(stem)) {
+      return reservedMode(context) === "off"
+        ? {}
+        : { Program: (program) => checkReservedFile(context, program, file) };
+    }
 
     return {
-      Program(node) {
-        const defaultDecl = node.body.find(
-          (s) => s.type === "ExportDefaultDeclaration",
-        );
-
-        if (FRAMEWORK_ENTRY.has(stem)) {
-          return;
-        }
-
-        if (PAGE_LIKE.has(stem)) {
-          if (reservedMode === "off") {
-            return;
-          }
-
-          if (defaultDecl) {
-            context.report({
-              node: defaultDecl,
-              messageId: "reservedInlineDefault",
-              data: { file: base },
-            });
-
-            return;
-          }
-          const reexports = node.body.some(
-            (s) =>
-              s.type === "ExportNamedDeclaration" &&
-              s.source &&
-              s.specifiers.some((sp) => sp.exported.name === "default"),
-          );
-
-          if (!reexports) {
-            return;
-          }
-
-          for (const statement of node.body) {
-            if (isAllowedResidue(statement)) {
-              continue;
-            }
-            context.report({
-              node: statement,
-              messageId: "reservedNotPureReexport",
-              data: { file: base, name: statementLabel(statement) },
-            });
-          }
-
-          return;
-        }
-
-        if (!defaultDecl) {
-          return;
-        }
-        const name = exportedName(defaultDecl.declaration);
-
-        if (name === null) {
-          context.report({
-            node: defaultDecl,
-            messageId: "unnamedDefault",
-            data: { file: base, stem },
-          });
-
-          return;
-        }
-
-        if (name !== stem) {
-          context.report({
-            node: defaultDecl.declaration.id ?? defaultDecl,
-            messageId: "nameMismatch",
-            data: { file: base, name },
-          });
-        }
-      },
+      Program: (program) => checkNamedDefault(context, program, { file, stem }),
     };
   },
 };
-
-/** A human-readable label for the statement that does not belong. */
-function statementLabel(node) {
-  if (node.type === "FunctionDeclaration" && node.id) {
-    return node.id.name;
-  }
-
-  if (node.type === "VariableDeclaration") {
-    const first = node.declarations[0]?.id;
-
-    return first && first.type === "Identifier" ? first.name : "a value";
-  }
-
-  return "other code";
-}

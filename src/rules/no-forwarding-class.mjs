@@ -25,18 +25,28 @@
 
 import ts from "typescript";
 
-/** `{ depName, portTypeText }` when the ts.ClassDeclaration is a pure forwarder, else null. */
-function forwardingShape(classDeclaration) {
+function soleConstructor(classDeclaration) {
   const constructors = classDeclaration.members.filter(
     (member) => ts.isConstructorDeclaration(member) && member.body,
   );
-  if (constructors.length !== 1) return null;
-  const ctor = constructors[0];
+  return constructors.length === 1 ? constructors[0] : null;
+}
+
+/** The lone typed parameter property of an empty-bodied constructor, else null. */
+function injectedPortParameter(ctor) {
   if (ctor.body.statements.length > 0) return null;
   if (ctor.parameters.length !== 1) return null;
   const param = ctor.parameters[0];
   if (!ts.isParameterPropertyDeclaration(param, ctor)) return null;
-  if (!ts.isIdentifier(param.name) || !param.type) return null;
+  return ts.isIdentifier(param.name) && param.type ? param : null;
+}
+
+/** `{ depName, portTypeText }` when the ts.ClassDeclaration is a pure forwarder, else null. */
+function forwardingShape(classDeclaration) {
+  const ctor = soleConstructor(classDeclaration);
+  if (!ctor) return null;
+  const param = injectedPortParameter(ctor);
+  if (!param) return null;
   const depName = param.name.text;
 
   const others = classDeclaration.members.filter((member) => member !== ctor);
@@ -47,43 +57,62 @@ function forwardingShape(classDeclaration) {
   return { depName, portTypeText: param.type.getText() };
 }
 
-/** Body is exactly `return this.<depName>.<ownName>(<own params in order>);`. */
-function isForwardingMethod(member, depName) {
+function isPlainParameter(parameter) {
+  return (
+    ts.isIdentifier(parameter.name) &&
+    !parameter.initializer &&
+    !parameter.dotDotDotToken
+  );
+}
+
+function isInstanceMethodWithPlainParameters(member) {
   if (!ts.isMethodDeclaration(member) || !member.body) return false;
   if (ts.getCombinedModifierFlags(member) & ts.ModifierFlags.Static) {
     return false;
   }
   if (!ts.isIdentifier(member.name)) return false;
-  if (
-    !member.parameters.every(
-      (parameter) =>
-        ts.isIdentifier(parameter.name) &&
-        !parameter.initializer &&
-        !parameter.dotDotDotToken,
-    )
-  ) {
-    return false;
-  }
-  if (member.body.statements.length !== 1) return false;
-  const statement = member.body.statements[0];
-  if (!ts.isReturnStatement(statement) || !statement.expression) return false;
+  return member.parameters.every(isPlainParameter);
+}
+
+/** The call of a body that is exactly `return <call>;`, else null. */
+function soleReturnedCall(body) {
+  if (body.statements.length !== 1) return null;
+  const statement = body.statements[0];
+  if (!ts.isReturnStatement(statement) || !statement.expression) return null;
   const call = statement.expression;
-  if (!ts.isCallExpression(call)) return false;
+  return ts.isCallExpression(call) ? call : null;
+}
+
+/** `call` is `this.<depName>.<methodName>(...)`. */
+function callsInjectedPort(call, depName, methodName) {
   const callee = call.expression;
   if (!ts.isPropertyAccessExpression(callee)) return false;
-  if (callee.name.text !== member.name.text) return false;
+  if (callee.name.text !== methodName) return false;
   const receiver = callee.expression;
   if (!ts.isPropertyAccessExpression(receiver)) return false;
-  if (receiver.expression.kind !== ts.SyntaxKind.ThisKeyword) return false;
-  if (receiver.name.text !== depName) return false;
   return (
-    call.arguments.length === member.parameters.length &&
+    receiver.expression.kind === ts.SyntaxKind.ThisKeyword &&
+    receiver.name.text === depName
+  );
+}
+
+function forwardsOwnParameters(call, parameters) {
+  return (
+    call.arguments.length === parameters.length &&
     call.arguments.every(
       (argument, i) =>
-        ts.isIdentifier(argument) &&
-        argument.text === member.parameters[i].name.text,
+        ts.isIdentifier(argument) && argument.text === parameters[i].name.text,
     )
   );
+}
+
+/** Body is exactly `return this.<depName>.<ownName>(<own params in order>);`. */
+function isForwardingMethod(member, depName) {
+  if (!isInstanceMethodWithPlainParameters(member)) return false;
+  const call = soleReturnedCall(member.body);
+  if (!call) return false;
+  if (!callsInjectedPort(call, depName, member.name.text)) return false;
+  return forwardsOwnParameters(call, member.parameters);
 }
 
 function classDeclarationOf(symbol, checker) {
@@ -94,41 +123,58 @@ function classDeclarationOf(symbol, checker) {
   return resolved?.declarations?.find(ts.isClassDeclaration) ?? null;
 }
 
-/** All identifiers a file's top level brings into scope (imports + declarations). */
-function topLevelNames(program) {
-  const names = new Set();
-  for (const statement of program.body) {
-    if (statement.type === "ImportDeclaration") {
-      statement.specifiers.forEach((specifier) =>
-        names.add(specifier.local.name),
-      );
-    }
-    if (statement.id?.type === "Identifier") names.add(statement.id.name);
-    const declaration = statement.declaration ?? null;
-    if (declaration?.id?.type === "Identifier") names.add(declaration.id.name);
+function namesBroughtIntoScope(statement) {
+  if (statement.type === "ImportDeclaration") {
+    return statement.specifiers.map((specifier) => specifier.local.name);
   }
-  return names;
+  return [statement, statement.declaration]
+    .filter((node) => node?.id?.type === "Identifier")
+    .map((node) => node.id.name);
 }
 
-function collectTypeReferences(node, className, acc = []) {
-  if (!node || typeof node.type !== "string") return acc;
-  if (
+/** All identifiers a file's top level brings into scope (imports + declarations). */
+function topLevelNames(program) {
+  return new Set(program.body.flatMap(namesBroughtIntoScope));
+}
+
+function isAstNode(value) {
+  return Boolean(value) && typeof value.type === "string";
+}
+
+function childNodes(node) {
+  return Object.keys(node)
+    .filter((key) => key !== "parent")
+    .flatMap((key) => {
+      const value = node[key];
+      return Array.isArray(value) ? value : [value];
+    })
+    .filter(isAstNode);
+}
+
+function isTypeReferenceTo(node, className) {
+  return (
     node.type === "TSTypeReference" &&
     node.typeName.type === "Identifier" &&
     node.typeName.name === className
-  ) {
-    acc.push(node);
-  }
-  for (const key of Object.keys(node)) {
-    if (key === "parent") continue;
-    const value = node[key];
-    if (Array.isArray(value)) {
-      value.forEach((child) => collectTypeReferences(child, className, acc));
-    } else if (value && typeof value.type === "string") {
-      collectTypeReferences(value, className, acc);
-    }
-  }
+  );
+}
+
+function collectTypeReferences(node, className, acc = []) {
+  if (!isAstNode(node)) return acc;
+  if (isTypeReferenceTo(node, className)) acc.push(node);
+  childNodes(node).forEach((child) =>
+    collectTypeReferences(child, className, acc),
+  );
   return acc;
+}
+
+/** The range to cut so the specifier and one adjoining comma go together. */
+function specifierRemovalRange(specifiers, index) {
+  const specifier = specifiers[index];
+  if (index > 0) {
+    return [specifiers[index - 1].range[1], specifier.range[1]];
+  }
+  return [specifier.range[0], specifiers[index + 1].range[0]];
 }
 
 function removeImportSpecifierFixes(fixer, program, className) {
@@ -141,16 +187,55 @@ function removeImportSpecifierFixes(fixer, program, className) {
     );
     if (index === -1) continue;
     if (statement.specifiers.length === 1) return [fixer.remove(statement)];
-    const specifier = statement.specifiers[index];
-    const neighbor =
-      index > 0
-        ? statement.specifiers[index - 1]
-        : statement.specifiers[index + 1];
-    return index > 0
-      ? [fixer.removeRange([neighbor.range[1], specifier.range[1]])]
-      : [fixer.removeRange([specifier.range[0], neighbor.range[0]])];
+    return [
+      fixer.removeRange(specifierRemovalRange(statement.specifiers, index)),
+    ];
   }
   return [];
+}
+
+function isSingleArgumentNew(node) {
+  if (node.callee.type !== "Identifier") return false;
+  return (
+    node.arguments.length === 1 && node.arguments[0].type !== "SpreadElement"
+  );
+}
+
+function fileWideRewriteFixes({ fixer, sourceCode, className, portTypeText }) {
+  const fixes = collectTypeReferences(sourceCode.ast, className).map(
+    (reference) => fixer.replaceText(reference, portTypeText),
+  );
+  return fixes.concat(
+    removeImportSpecifierFixes(fixer, sourceCode.ast, className),
+  );
+}
+
+function forwardingShapeOfCallee(services, checker, callee) {
+  const symbol = checker.getSymbolAtLocation(
+    services.esTreeNodeToTSNodeMap.get(callee),
+  );
+  const declaration = classDeclarationOf(symbol, checker);
+  return declaration ? forwardingShape(declaration) : null;
+}
+
+// File-wide cleanup rides on the first usage fix only, and only
+// when the port type is already in scope — never fabricate imports.
+function usageFix({ fixer, sourceCode, fixedClasses, node, shape }) {
+  const className = node.callee.name;
+  const fixes = [
+    fixer.replaceText(node, sourceCode.getText(node.arguments[0])),
+  ];
+  if (fixedClasses.has(className)) return fixes;
+  if (!topLevelNames(sourceCode.ast).has(shape.portTypeText)) return fixes;
+  fixedClasses.add(className);
+  return fixes.concat(
+    fileWideRewriteFixes({
+      fixer,
+      sourceCode,
+      className,
+      portTypeText: shape.portTypeText,
+    }),
+  );
 }
 
 export default {
@@ -190,47 +275,15 @@ export default {
       },
 
       NewExpression(node) {
-        if (node.callee.type !== "Identifier") return;
-        if (
-          node.arguments.length !== 1 ||
-          node.arguments[0].type === "SpreadElement"
-        ) {
-          return;
-        }
-        const symbol = checker.getSymbolAtLocation(
-          services.esTreeNodeToTSNodeMap.get(node.callee),
-        );
-        const declaration = classDeclarationOf(symbol, checker);
-        if (!declaration) return;
-        const shape = forwardingShape(declaration);
+        if (!isSingleArgumentNew(node)) return;
+        const shape = forwardingShapeOfCallee(services, checker, node.callee);
         if (!shape) return;
-
-        const className = node.callee.name;
         context.report({
           node,
           messageId: "forwardingUsage",
-          data: { name: className, port: shape.portTypeText },
-          fix(fixer) {
-            const fixes = [
-              fixer.replaceText(node, sourceCode.getText(node.arguments[0])),
-            ];
-            // File-wide cleanup rides on the first usage fix only, and only
-            // when the port type is already in scope — never fabricate imports.
-            if (
-              !fixedClasses.has(className) &&
-              topLevelNames(sourceCode.ast).has(shape.portTypeText)
-            ) {
-              fixedClasses.add(className);
-              collectTypeReferences(sourceCode.ast, className).forEach(
-                (reference) =>
-                  fixes.push(fixer.replaceText(reference, shape.portTypeText)),
-              );
-              fixes.push(
-                ...removeImportSpecifierFixes(fixer, sourceCode.ast, className),
-              );
-            }
-            return fixes;
-          },
+          data: { name: node.callee.name, port: shape.portTypeText },
+          fix: (fixer) =>
+            usageFix({ fixer, sourceCode, fixedClasses, node, shape }),
         });
       },
     };

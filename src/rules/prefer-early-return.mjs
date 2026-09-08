@@ -67,6 +67,76 @@ function declaresBindings(alternate) {
   return alternate.body.some((statement) => DECLARATIONS.has(statement.type));
 }
 
+function fixUnnecessaryElse(sourceCode, fixer, node) {
+  const elseToken = sourceCode.getTokenBefore(
+    node.alternate,
+    (token) => token.type === "Keyword" && token.value === "else",
+  );
+
+  // `else if (...)` — dropping the keyword leaves a sibling if.
+  if (node.alternate.type === "IfStatement") {
+    return fixer.removeRange([elseToken.range[0], node.alternate.range[0]]);
+  }
+
+  // `else { ... }` — replace keyword-through-block with the block's body.
+  if (node.alternate.type === "BlockStatement") {
+    const inner = sourceCode.getText(node.alternate).slice(1, -1).trim();
+
+    return fixer.replaceTextRange(
+      [elseToken.range[0], node.alternate.range[1]],
+      inner,
+    );
+  }
+
+  // `else statement;` — just drop the keyword.
+  return fixer.removeRange([elseToken.range[0], node.alternate.range[0]]);
+}
+
+/** Shape 1: the report for an if that carries an else. */
+function elseDescriptor(sourceCode, node) {
+  if (!terminates(node.consequent)) {
+    return { node, messageId: "splitIntoTwoIfs" };
+  }
+  const fixable = !declaresBindings(node.alternate);
+
+  return {
+    node: node.alternate,
+    messageId: "unnecessaryElse",
+    data: { how: "returns" },
+    fix: fixable
+      ? (fixer) => fixUnnecessaryElse(sourceCode, fixer, node)
+      : undefined,
+  };
+}
+
+function wrapsHappyPath(wrapped, tailLength) {
+  return tailLength > 0 && wrapped >= MIN_WRAPPED && wrapped > tailLength;
+}
+
+/** Shape 2: the tail length dangling after an if that wraps the happy path,
+ *  or null. Only `return`/`throw` wraps qualify — a chunky continue/break
+ *  guard in a loop is already guard-shaped, its wrapped block being the
+ *  exceptional path — and only a REAL block (≥ MIN_WRAPPED statements)
+ *  outweighing its tail is worth a warning. */
+function wrappedTailLength(node) {
+  if (node.parent.type !== "BlockStatement" || !exits(node.consequent)) {
+    return null;
+  }
+  const siblings = node.parent.body;
+  const tailLength = siblings.length - siblings.indexOf(node) - 1;
+
+  return wrapsHappyPath(statementCount(node.consequent), tailLength)
+    ? tailLength
+    : null;
+}
+
+function guardDescriptor(node) {
+  const tailLength = wrappedTailLength(node);
+  if (tailLength === null) return null;
+
+  return { node, messageId: "flipToGuard", data: { tail: String(tailLength) } };
+}
+
 export default {
   meta: {
     type: "suggestion",
@@ -89,75 +159,12 @@ export default {
   create(context) {
     const sourceCode = context.sourceCode;
 
-    function fixUnnecessaryElse(fixer, node) {
-      const elseToken = sourceCode.getTokenBefore(
-        node.alternate,
-        (token) => token.type === "Keyword" && token.value === "else",
-      );
-
-      // `else if (...)` — dropping the keyword leaves a sibling if.
-      if (node.alternate.type === "IfStatement") {
-        return fixer.removeRange([elseToken.range[0], node.alternate.range[0]]);
-      }
-
-      // `else { ... }` — replace keyword-through-block with the block's body.
-      if (node.alternate.type === "BlockStatement") {
-        const inner = sourceCode.getText(node.alternate).slice(1, -1).trim();
-
-        return fixer.replaceTextRange(
-          [elseToken.range[0], node.alternate.range[1]],
-          inner,
-        );
-      }
-
-      // `else statement;` — just drop the keyword.
-      return fixer.removeRange([elseToken.range[0], node.alternate.range[0]]);
-    }
-
     return {
       IfStatement(node) {
-        if (node.alternate) {
-          if (!terminates(node.consequent)) {
-            context.report({ node, messageId: "splitIntoTwoIfs" });
-
-            return;
-          }
-          const fixable = !declaresBindings(node.alternate);
-
-          context.report({
-            node: node.alternate,
-            messageId: "unnecessaryElse",
-            data: { how: "returns" },
-            fix: fixable
-              ? (fixer) => fixUnnecessaryElse(fixer, node)
-              : undefined,
-          });
-
-          return;
-        }
-
-        // Shape 2: a terminating, else-less if that wraps the happy path.
-        // Only `return`/`throw` wraps qualify — a chunky continue/break guard in
-        // a loop is already guard-shaped, its wrapped block being the
-        // exceptional path — and only a REAL block (≥ MIN_WRAPPED statements)
-        // outweighing its tail is worth a warning.
-        if (node.parent.type !== "BlockStatement" || !exits(node.consequent)) {
-          return;
-        }
-        const siblings = node.parent.body;
-        const tail = siblings.slice(siblings.indexOf(node) + 1);
-
-        if (
-          tail.length > 0 &&
-          statementCount(node.consequent) >= MIN_WRAPPED &&
-          statementCount(node.consequent) > tail.length
-        ) {
-          context.report({
-            node,
-            messageId: "flipToGuard",
-            data: { tail: String(tail.length) },
-          });
-        }
+        const descriptor = node.alternate
+          ? elseDescriptor(sourceCode, node)
+          : guardDescriptor(node);
+        if (descriptor) context.report(descriptor);
       },
     };
   },

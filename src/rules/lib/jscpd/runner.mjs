@@ -61,7 +61,16 @@ function flag(name, value) {
   return value === undefined ? [] : [name, String(value)];
 }
 
-function buildArgs({ bin, output, roots, minTokens, minLines, mode, ignore }) {
+function buildArgs({
+  bin,
+  output,
+  roots,
+  minTokens,
+  minLines,
+  mode,
+  ignore,
+  formats,
+}) {
   return [
     bin,
     "--reporters",
@@ -74,6 +83,7 @@ function buildArgs({ bin, output, roots, minTokens, minLines, mode, ignore }) {
     ...flag("--min-lines", minLines),
     ...flag("--mode", mode),
     ...flag("--ignore", ignore?.length ? ignore.join(",") : undefined),
+    ...flag("--format", formats?.length ? formats.join(",") : undefined),
     ...roots,
   ];
 }
@@ -86,44 +96,57 @@ function readReport(output) {
   return JSON.parse(readFileSync(reportPath, "utf8"));
 }
 
-export function runJscpd({
-  cwd,
-  bin,
-  roots,
-  minTokens,
-  minLines,
-  mode,
-  ignore,
-}) {
+function missingBinaryError(bin) {
+  const location = bin ? ` at ${bin}` : "";
+  return { error: `jscpd binary not found${location}` };
+}
+
+function missingReportError(result) {
+  const detail = result.error?.message ?? result.stderr ?? "";
+  return {
+    error: `jscpd produced no report (exit ${result.status}): ${detail}`.trim(),
+  };
+}
+
+function spawnJscpd(options, output) {
+  const args = buildArgs({ ...options, output });
+  const result = spawnSync(process.execPath, args, {
+    cwd: options.cwd,
+    encoding: "utf8",
+    maxBuffer: MAX_BUFFER,
+  });
+  const report = readReport(output);
+  return report ? { report } : { result };
+}
+
+function missingRootError(cwd, roots) {
+  const missing = roots.filter((root) => !existsSync(resolve(cwd, root)));
+  if (missing.length === 0) {
+    return null;
+  }
+  return {
+    error: `root${missing.length > 1 ? "s" : ""} ${missing.join(", ")} not found under ${cwd}; roots are directories, not globs`,
+  };
+}
+
+export function runJscpd(options) {
+  const { bin, cwd, roots } = options;
   if (!bin || !existsSync(bin)) {
-    return { error: `jscpd binary not found${bin ? ` at ${bin}` : ""}` };
+    return missingBinaryError(bin);
+  }
+
+  const rootError = missingRootError(cwd, roots);
+  if (rootError) {
+    return rootError;
   }
 
   const output = mkdtempSync(join(tmpdir(), "re-lint-jscpd-"));
   const startedAt = Date.now();
 
   try {
-    const args = buildArgs({
-      bin,
-      output,
-      roots,
-      minTokens,
-      minLines,
-      mode,
-      ignore,
-    });
-    const result = spawnSync(process.execPath, args, {
-      cwd,
-      encoding: "utf8",
-      maxBuffer: MAX_BUFFER,
-    });
-    const report = readReport(output);
+    const { report, result } = spawnJscpd(options, output);
     if (!report) {
-      const detail = result.error?.message ?? result.stderr ?? "";
-      return {
-        error:
-          `jscpd produced no report (exit ${result.status}): ${detail}`.trim(),
-      };
+      return missingReportError(result);
     }
     return { startedAt, byFile: indexClones(report) };
   } finally {

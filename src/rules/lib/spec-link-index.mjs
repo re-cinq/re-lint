@@ -29,6 +29,31 @@ export function corpusExists(root, dirs = ["specs", "adrs"]) {
   return dirs.some((dir) => fs.existsSync(path.join(root, dir)));
 }
 
+function testLinksOf(file) {
+  return linksForStatements(file.content).flatMap(({ testLinks }) =>
+    testLinks.map((link) => ({ link, specPath: file.path })),
+  );
+}
+
+function entryFor(index, key) {
+  const existing = index.get(key);
+  if (existing) {
+    return existing;
+  }
+  const created = { lines: new Set(), wholeFile: false };
+  index.set(key, created);
+  return created;
+}
+
+function recordLink(index, { link, specPath }) {
+  const entry = entryFor(index, resolveLinkPath(link.path, specPath));
+  if (link.line === null) {
+    entry.wholeFile = true;
+    return;
+  }
+  entry.lines.add(link.line);
+}
+
 /**
  * Fold every test link found across the given markdown files into a
  * `Map<repoRelTestPath, LinkEntry>`. Href paths are resolved to canonical
@@ -42,28 +67,21 @@ export function corpusExists(root, dirs = ["specs", "adrs"]) {
  */
 export function buildLinkIndex(files) {
   const index = new Map();
-
-  for (const file of files) {
-    for (const { testLinks } of linksForStatements(file.content)) {
-      for (const link of testLinks) {
-        const key = resolveLinkPath(link.path, file.path);
-        let entry = index.get(key);
-
-        if (!entry) {
-          entry = { lines: new Set(), wholeFile: false };
-          index.set(key, entry);
-        }
-
-        if (link.line === null) {
-          entry.wholeFile = true;
-        } else {
-          entry.lines.add(link.line);
-        }
-      }
-    }
-  }
-
+  files.flatMap(testLinksOf).forEach((found) => recordLink(index, found));
   return index;
+}
+
+function readMarkdownUnder(root, base) {
+  return fs
+    .readdirSync(base, { recursive: true })
+    .filter((entry) => entry.endsWith(".md"))
+    .map((entry) => {
+      const full = path.join(base, entry);
+      return {
+        path: toPosix(path.relative(root, full)),
+        content: fs.readFileSync(full, "utf8"),
+      };
+    });
 }
 
 /**
@@ -75,27 +93,8 @@ export function buildLinkIndex(files) {
  * @returns {Array<{ path: string, content: string }>}
  */
 export function readSpecFiles(root, dirs = ["specs", "adrs"]) {
-  const files = [];
-
-  for (const dir of dirs) {
-    const base = path.join(root, dir);
-
-    if (!fs.existsSync(base)) {
-      continue;
-    }
-
-    for (const entry of fs.readdirSync(base, { recursive: true })) {
-      if (!entry.endsWith(".md")) {
-        continue;
-      }
-      const full = path.join(base, entry);
-
-      files.push({
-        path: toPosix(path.relative(root, full)),
-        content: fs.readFileSync(full, "utf8"),
-      });
-    }
-  }
-
-  return files;
+  return dirs
+    .map((dir) => path.join(root, dir))
+    .filter((base) => fs.existsSync(base))
+    .flatMap((base) => readMarkdownUnder(root, base));
 }

@@ -20,35 +20,37 @@ const FUNCTION_TYPES = new Set([
   "ArrowFunctionExpression",
 ]);
 
+const FABRICATING_TYPES = new Set(["CallExpression", "NewExpression"]);
+
+function isAstNode(value) {
+  return Boolean(value) && typeof value.type === "string";
+}
+
+function childNodes(node) {
+  return Object.keys(node)
+    .filter((key) => key !== "parent")
+    .flatMap((key) => {
+      const value = node[key];
+      return Array.isArray(value) ? value : [value];
+    })
+    .filter(isAstNode);
+}
+
 function referencesName(node, name) {
-  if (!node || typeof node.type !== "string") return false;
+  if (!isAstNode(node)) return false;
   if (node.type === "Identifier") return node.name === name;
-  for (const key of Object.keys(node)) {
-    if (key === "parent") continue;
-    const value = node[key];
-    if (Array.isArray(value)) {
-      if (value.some((child) => referencesName(child, name))) return true;
-    } else if (value && typeof value.type === "string") {
-      if (referencesName(value, name)) return true;
-    }
-  }
-  return false;
+  return childNodes(node).some((child) => referencesName(child, name));
 }
 
 /** Return statements in the catch's own scope — nested functions excluded. */
 function ownReturns(node, acc = []) {
-  if (!node || typeof node.type !== "string") return acc;
+  if (!isAstNode(node)) return acc;
   if (FUNCTION_TYPES.has(node.type)) return acc;
   if (node.type === "ReturnStatement") {
     acc.push(node);
     return acc;
   }
-  for (const key of Object.keys(node)) {
-    if (key === "parent") continue;
-    const value = node[key];
-    if (Array.isArray(value)) value.forEach((child) => ownReturns(child, acc));
-    else if (value && typeof value.type === "string") ownReturns(value, acc);
-  }
+  childNodes(node).forEach((child) => ownReturns(child, acc));
   return acc;
 }
 
@@ -56,9 +58,7 @@ function fabricatesValue(returnStatement) {
   let argument = returnStatement.argument;
   if (!argument) return false;
   if (argument.type === "AwaitExpression") argument = argument.argument;
-  return (
-    argument.type === "CallExpression" || argument.type === "NewExpression"
-  );
+  return FABRICATING_TYPES.has(argument.type);
 }
 
 function swallowsError(catchClause) {

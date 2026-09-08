@@ -152,6 +152,25 @@ test("jscpdBin /nonexistent yields exactly one unavailable message across a.ts, 
   rmSync(cwd, { recursive: true, force: true });
 });
 
+test("roots naming a glob that is no directory yields one unavailable message naming the root", async () => {
+  const cwd = copyFixture(cacheRoot);
+  const results = await lint(cwd, { minTokens: 30, roots: ["src/*"] });
+  const all = results.flatMap((result) => result.messages);
+
+  assert.equal(all.length, 1);
+  assert.match(all[0].message, /root src\/\* not found .* not globs/);
+});
+
+test('formats: ["tsx"] skips the .ts fixture clone entirely', async () => {
+  const cwd = copyFixture(cacheRoot);
+  const results = await lint(cwd, { minTokens: 30, formats: ["tsx"] });
+
+  assert.deepEqual(
+    results.flatMap((result) => result.messages),
+    [],
+  );
+});
+
 test("rewriting b.ts without the clone after a scan in the same process yields zero messages", async () => {
   const cwd = copyFixture(cacheRoot);
   const options = { minTokens: 30, roots: ["."] };

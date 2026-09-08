@@ -25,33 +25,39 @@
  * call is rather than inferred by the next reader.
  */
 
+function isSignalKey(key) {
+  if (key?.type === "Identifier") {
+    return key.name === "signal";
+  }
+
+  return key?.type === "Literal" && key.value === "signal";
+}
+
+function isUndefinedIdentifier(value) {
+  return value?.type === "Identifier" && value.name === "undefined";
+}
+
+function mayCarrySignal(property) {
+  if (property.type === "SpreadElement") {
+    // Cannot see inside; treat as possibly carrying it rather than report.
+    return true;
+  }
+
+  if (!isSignalKey(property.key)) {
+    return false;
+  }
+
+  // `signal: undefined` is an absent deadline wearing the right key.
+  return !isUndefinedIdentifier(property.value);
+}
+
 /** `signal: <anything but undefined>` among an options object's properties. */
 function carriesSignal(options) {
   if (options?.type !== "ObjectExpression") {
     return false;
   }
 
-  return options.properties.some((property) => {
-    if (property.type === "SpreadElement") {
-      // Cannot see inside; treat as possibly carrying it rather than report.
-      return true;
-    }
-
-    const key = property.key;
-    const named =
-      (key?.type === "Identifier" && key.name === "signal") ||
-      (key?.type === "Literal" && key.value === "signal");
-
-    if (!named) {
-      return false;
-    }
-
-    // `signal: undefined` is an absent deadline wearing the right key.
-    return !(
-      property.value?.type === "Identifier" &&
-      property.value.name === "undefined"
-    );
-  });
+  return options.properties.some(mayCarrySignal);
 }
 
 /** The bare global, not `client.fetch(...)` / `this.fetch(...)`. */

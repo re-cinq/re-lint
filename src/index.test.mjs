@@ -50,10 +50,7 @@ test("recommended({ tseslint, stylistic }) adds their rules and plugins", () => 
 test("the preset lints a TypeScript file without configuration errors", async () => {
   const eslint = new ESLint({
     overrideConfigFile: true,
-    overrideConfig: [
-      { languageOptions: { parser: tseslint.parser } },
-      ...plugin.configs.recommended({ tseslint, stylistic }),
-    ],
+    overrideConfig: [...plugin.configs.recommended({ tseslint, stylistic })],
   });
   const [result] = await eslint.lintText(
     "export function total(items: number[]): number {\n  return items.reduce((sum, item) => sum + item, 0);\n}\n",

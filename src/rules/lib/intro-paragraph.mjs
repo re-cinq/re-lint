@@ -17,53 +17,63 @@
 
 const MIN_INTRO_CHARS = 40;
 
-/** A line is markdown structure, not prose, when it opens a heading, table row,
- * blockquote, code fence, bullet or ordered list item, or a `**Status:** …`
- * metadata line. */
+/** Markdown structure openers: heading, table row, blockquote, code fence, bullet
+ * or ordered list item, or a `**Status:** …` metadata line. */
+const STRUCTURE_PATTERNS = [
+  /^#/,
+  /^\|/,
+  /^>/,
+  /^```/,
+  /^(\d+\.|[-*+])\s/,
+  /^\*\*status\b/i,
+];
+
+const SECTION_HEADING = /^##\s/;
+const FRONTMATTER_FENCE = "---";
+
 function isProseLine(line) {
   const trimmed = line.trim();
-
   if (trimmed === "") {
     return false;
   }
+  return !STRUCTURE_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
 
-  const isStructure =
-    trimmed.startsWith("#") ||
-    trimmed.startsWith("|") ||
-    trimmed.startsWith(">") ||
-    trimmed.startsWith("```") ||
-    /^(\d+\.|[-*+])\s/.test(trimmed) ||
-    /^\*\*status\b/i.test(trimmed);
-
-  return !isStructure;
+/** Index of the first line after a leading `---` … `---` frontmatter block. A
+ * missing closing `---` yields an index past the last line, so the region is
+ * empty and the rule fires — the right answer for malformed frontmatter. */
+function frontmatterEnd(lines) {
+  if (lines[0]?.trim() !== FRONTMATTER_FENCE) {
+    return 0;
+  }
+  const closing = lines.findIndex(
+    (line, index) => index > 0 && line.trim() === FRONTMATTER_FENCE,
+  );
+  return closing === -1 ? lines.length + 1 : closing + 1;
 }
 
 /** The intro region is every line before the first `## ` section, past any leading
  * `---` … `---` frontmatter (ADRs). */
 function introRegion(content, kind) {
   const lines = content.split("\n");
-  let start = 0;
+  const start = kind === "adr" ? frontmatterEnd(lines) : 0;
+  const body = lines.slice(start);
+  const firstSection = body.findIndex((line) => SECTION_HEADING.test(line));
+  return firstSection === -1 ? body : body.slice(0, firstSection);
+}
 
-  if (kind === "adr" && lines[0]?.trim() === "---") {
-    let i = 1;
+function meetsMinimum(paragraph) {
+  const text = paragraph.join(" ").replace(/\s+/g, " ").trim();
+  return text.length >= MIN_INTRO_CHARS;
+}
 
-    while (i < lines.length && lines[i].trim() !== "---") {
-      i++;
-    }
-    // A missing closing `---` leaves start past the last line, so the region is
-    // empty and the rule fires — the right answer for malformed frontmatter.
-    start = i + 1;
+/** A blockquote is lazily continued by wrapped lines that drop the leading `>`;
+ * the quote runs until a blank line. */
+function blockquoteStateAfter(inBlockquote, trimmed) {
+  if (trimmed === "") {
+    return false;
   }
-  const region = [];
-
-  for (let i = start; i < lines.length; i++) {
-    if (/^##\s/.test(lines[i])) {
-      break;
-    }
-    region.push(lines[i]);
-  }
-
-  return region;
+  return inBlockquote || trimmed.startsWith(">");
 }
 
 /**
@@ -72,28 +82,12 @@ function introRegion(content, kind) {
  * @returns {boolean} true when a lead paragraph of at least MIN_INTRO_CHARS exists
  */
 export function hasLeadParagraph(content, kind) {
-  const region = introRegion(content, kind);
-
   let paragraph = [];
-  // A blockquote is lazily continued by wrapped lines that drop the leading `>`;
-  // the quote runs until a blank line. Such a continuation is quote structure,
-  // not a lead paragraph, so track the state to keep it out of the prose.
   let inBlockquote = false;
 
-  const meetsMinimum = () => {
-    const text = paragraph.join(" ").replace(/\s+/g, " ").trim();
-
-    return text.length >= MIN_INTRO_CHARS;
-  };
-
-  for (const line of region) {
+  for (const line of introRegion(content, kind)) {
     const trimmed = line.trim();
-
-    if (trimmed === "") {
-      inBlockquote = false;
-    } else if (trimmed.startsWith(">")) {
-      inBlockquote = true;
-    }
+    inBlockquote = blockquoteStateAfter(inBlockquote, trimmed);
     const isLazyBlockquoteLine = inBlockquote && !trimmed.startsWith(">");
 
     // Only prose accumulates. A blank or structural line closes the current
@@ -103,11 +97,11 @@ export function hasLeadParagraph(content, kind) {
       continue;
     }
 
-    if (meetsMinimum()) {
+    if (meetsMinimum(paragraph)) {
       return true;
     }
     paragraph = [];
   }
 
-  return meetsMinimum();
+  return meetsMinimum(paragraph);
 }

@@ -192,12 +192,14 @@ const sourceRuleNames = Object.keys(rules).filter(
  * (@stylistic/eslint-plugin) are passed in rather than imported so the package
  * depends on neither; the rules that need them are added only when given.
  */
-function recommended({ tseslint, stylistic } = {}) {
-  const plugins = { "re-lint": plugin };
+function optionalPlugins({ tseslint, stylistic }) {
+  const plugins = {};
   const extraRules = {};
+  const languageOptions = {};
 
   if (tseslint) {
     plugins["@typescript-eslint"] = tseslint.plugin;
+    languageOptions.parser = tseslint.parser;
     Object.assign(extraRules, TYPESCRIPT_RULES);
   }
 
@@ -206,11 +208,21 @@ function recommended({ tseslint, stylistic } = {}) {
     Object.assign(extraRules, STYLISTIC_RULES);
   }
 
+  return { plugins, extraRules, languageOptions };
+}
+
+function recommended({ tseslint, stylistic } = {}) {
+  const { plugins, extraRules, languageOptions } = optionalPlugins({
+    tseslint,
+    stylistic,
+  });
+
   return [
     {
       name: "re-lint/recommended",
       files: ["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"],
-      plugins,
+      languageOptions,
+      plugins: { "re-lint": plugin, ...plugins },
       rules: { ...CORE_RULES, ...extraRules, ...presetRules(sourceRuleNames) },
     },
     {

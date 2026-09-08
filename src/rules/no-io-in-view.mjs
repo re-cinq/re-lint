@@ -66,6 +66,150 @@ function viewName(filename, suffixes) {
   return base.slice(0, -".tsx".length);
 }
 
+// Server-action modules — the final path segment is `actions`. Actions flow
+// down as props; a view importing them is doing the container's job.
+function isServerActionModule(specifier) {
+  return /(?:^|\/)actions$/.test(specifier);
+}
+
+function bannedSource(dataModules, specifier) {
+  if (typeof specifier !== "string") {
+    return null;
+  }
+
+  return dataModules.has(specifier) || isServerActionModule(specifier)
+    ? specifier
+    : null;
+}
+
+/** The literal specifier of a `require("...")` call, or null for any other call. */
+function requireSpecifier(node) {
+  const { callee } = node;
+
+  if (callee.type !== "Identifier" || callee.name !== "require") {
+    return null;
+  }
+
+  if (node.arguments.length !== 1 || node.arguments[0].type !== "Literal") {
+    return null;
+  }
+
+  return node.arguments[0].value;
+}
+
+function isPlainMember(callee) {
+  return (
+    callee.type === "MemberExpression" &&
+    !callee.computed &&
+    callee.property.type === "Identifier"
+  );
+}
+
+function memberNetworkApi(callee) {
+  const host = callee.object.type === "Identifier" ? callee.object.name : null;
+  const method = callee.property.name;
+
+  if (method === "fetch" && GLOBAL_HOSTS.has(host)) {
+    return "fetch";
+  }
+
+  if (method === "sendBeacon" && host === "navigator") {
+    return "navigator.sendBeacon";
+  }
+
+  return null;
+}
+
+/** The network API a call reaches for, or null when it reaches none. */
+function networkApi(callee) {
+  if (callee.type === "Identifier") {
+    return callee.name === "fetch" ? "fetch" : null;
+  }
+
+  if (isPlainMember(callee)) {
+    return memberNetworkApi(callee);
+  }
+
+  return null;
+}
+
+function isXhrConstructor(callee) {
+  return callee.type === "Identifier" && XHR_CONSTRUCTORS.has(callee.name);
+}
+
+function checkCall(node, { reportImport, reportNetwork }) {
+  const specifier = requireSpecifier(node);
+
+  if (specifier !== null) {
+    reportImport(node, specifier);
+
+    return;
+  }
+
+  const api = networkApi(node.callee);
+
+  if (api) {
+    reportNetwork(node, api);
+  }
+}
+
+function reporters(context, { name, dataModules }) {
+  return {
+    reportImport(node, specifier) {
+      const source = bannedSource(dataModules, specifier);
+
+      if (source) {
+        context.report({
+          node,
+          messageId: "ioImportInView",
+          data: { name, source },
+        });
+      }
+    },
+    reportNetwork(node, api) {
+      context.report({
+        node,
+        messageId: "networkCallInView",
+        data: { name, api },
+      });
+    },
+  };
+}
+
+function visitors(report) {
+  const { reportImport, reportNetwork } = report;
+
+  return {
+    ImportDeclaration(node) {
+      if (node.importKind !== "type") {
+        reportImport(node, node.source.value);
+      }
+    },
+    ImportExpression(node) {
+      if (node.source.type === "Literal") {
+        reportImport(node, node.source.value);
+      }
+    },
+    NewExpression(node) {
+      if (isXhrConstructor(node.callee)) {
+        reportNetwork(node, `new ${node.callee.name}`);
+      }
+    },
+    CallExpression(node) {
+      checkCall(node, report);
+    },
+  };
+}
+
+function readOptions(context) {
+  const options = context.options?.[0] ?? {};
+
+  return {
+    dataModules: new Set(options.dataModules ?? []),
+    viewSuffixes: options.viewSuffixes ?? DEFAULT_VIEW_SUFFIXES,
+  };
+}
+
 export default {
   meta: {
     type: "problem",
@@ -102,116 +246,18 @@ export default {
   },
 
   create(context) {
-    const options = context.options?.[0] ?? {};
-    const dataModules = new Set(options.dataModules ?? []);
+    const { dataModules, viewSuffixes } = readOptions(context);
 
     if (dataModules.size === 0) {
       return {};
     }
 
-    const name = viewName(
-      context.filename,
-      options.viewSuffixes ?? DEFAULT_VIEW_SUFFIXES,
-    );
+    const name = viewName(context.filename, viewSuffixes);
 
     if (!name) {
       return {};
     }
 
-    function bannedSource(value) {
-      if (typeof value !== "string") {
-        return null;
-      }
-
-      if (dataModules.has(value)) {
-        return value;
-      }
-
-      // Server-action modules — the final path segment is `actions`. Actions flow
-      // down as props; a view importing them is doing the container's job.
-      if (/(?:^|\/)actions$/.test(value)) {
-        return value;
-      }
-
-      return null;
-    }
-
-    function reportImport(node, value) {
-      const source = bannedSource(value);
-      if (source) {
-        context.report({
-          node,
-          messageId: "ioImportInView",
-          data: { name, source },
-        });
-      }
-    }
-
-    function reportNetwork(node, api) {
-      context.report({
-        node,
-        messageId: "networkCallInView",
-        data: { name, api },
-      });
-    }
-
-    return {
-      ImportDeclaration(node) {
-        if (node.importKind === "type") return;
-        reportImport(node, node.source.value);
-      },
-      ImportExpression(node) {
-        if (node.source.type === "Literal") {
-          reportImport(node, node.source.value);
-        }
-      },
-      NewExpression(node) {
-        if (
-          node.callee.type === "Identifier" &&
-          XHR_CONSTRUCTORS.has(node.callee.name)
-        ) {
-          reportNetwork(node, `new ${node.callee.name}`);
-        }
-      },
-      CallExpression(node) {
-        const callee = node.callee;
-
-        if (
-          callee.type === "Identifier" &&
-          callee.name === "require" &&
-          node.arguments.length === 1 &&
-          node.arguments[0].type === "Literal"
-        ) {
-          reportImport(node, node.arguments[0].value);
-
-          return;
-        }
-
-        if (callee.type === "Identifier" && callee.name === "fetch") {
-          reportNetwork(node, "fetch");
-
-          return;
-        }
-
-        if (
-          callee.type === "MemberExpression" &&
-          !callee.computed &&
-          callee.property.type === "Identifier"
-        ) {
-          const host =
-            callee.object.type === "Identifier" ? callee.object.name : null;
-
-          if (callee.property.name === "fetch" && GLOBAL_HOSTS.has(host)) {
-            reportNetwork(node, "fetch");
-
-            return;
-          }
-
-          if (callee.property.name === "sendBeacon" && host === "navigator") {
-            reportNetwork(node, "navigator.sendBeacon");
-          }
-        }
-      },
-    };
+    return visitors(reporters(context, { name, dataModules }));
   },
 };

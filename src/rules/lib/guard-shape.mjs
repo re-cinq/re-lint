@@ -21,12 +21,25 @@ const FLIPPED_OPERATOR = {
   ">=": "<",
 };
 
-export function rootIdentifier(node) {
+function memberChainRoot(node) {
   let current = node;
-  while (current && current.type === "MemberExpression")
-    current = current.object;
-  if (current && current.type === "ThisExpression") return "this";
-  return current && current.type === "Identifier" ? current.name : null;
+  while (current?.type === "MemberExpression") current = current.object;
+  return current;
+}
+
+const ROOT_NAME_BY_TYPE = {
+  ThisExpression: () => "this",
+  Identifier: (node) => node.name,
+};
+
+export function rootIdentifier(node) {
+  const root = memberChainRoot(node);
+  const nameOf = ROOT_NAME_BY_TYPE[root?.type];
+  return nameOf ? nameOf(root) : null;
+}
+
+export function isNegation(node) {
+  return node.type === "UnaryExpression" && node.operator === "!";
 }
 
 // `typeof x === "y"` narrows x, so look through the typeof to its operand.
@@ -36,6 +49,48 @@ function narrowTarget(node) {
     : node;
 }
 
+function rootsOf(node) {
+  const root = rootIdentifier(node);
+  return root ? [root] : [];
+}
+
+const EQUALITY_OPERATORS = new Set(["===", "!==", "==", "!="]);
+
+function isUndefinedIdentifier(node) {
+  return node.type === "Identifier" && node.name === "undefined";
+}
+
+function equalityRoots(test) {
+  return [test.left, test.right]
+    .filter((side) => side.type !== "Literal" && !isUndefinedIdentifier(side))
+    .map((side) => rootIdentifier(narrowTarget(side)))
+    .filter(Boolean);
+}
+
+// `"error" in result` narrows the RIGHT operand — the discriminated branch
+// is where `result.error` exists at all.
+const BINARY_ROOTS_BY_OPERATOR = {
+  instanceof: (test) => rootsOf(test.left),
+  in: (test) => rootsOf(test.right),
+};
+
+function binaryRoots(test) {
+  const byOperator = BINARY_ROOTS_BY_OPERATOR[test.operator];
+  if (byOperator) return byOperator(test);
+  return EQUALITY_OPERATORS.has(test.operator) ? equalityRoots(test) : [];
+}
+
+// `!x` narrows the same reference as `x`; recurse through the negation.
+// A method-call result (`if (m.has(x))`) is not a narrowable reference.
+const NARROWED_ROOTS_BY_TYPE = {
+  UnaryExpression: (test) =>
+    isNegation(test) ? narrowedRoots(test.argument) : [],
+  Identifier: rootsOf,
+  MemberExpression: rootsOf,
+  ThisExpression: rootsOf,
+  BinaryExpression: binaryRoots,
+};
+
 /**
  * Identifiers the test *narrows*. enforceTrue asserts the condition after the
  * call, so its arguments are typed WITHOUT that narrowing — if the guard's
@@ -43,63 +98,29 @@ function narrowTarget(node) {
  * loses the narrowing and breaks. Callers skip those.
  */
 export function narrowedRoots(test) {
-  // `!x` narrows the same reference as `x`; recurse through the negation.
-  if (test.type === "UnaryExpression" && test.operator === "!") {
-    return narrowedRoots(test.argument);
-  }
-  // Positive truthy test — `if (x)` / `if (x.y)` / `if (this.y)`.
-  if (
-    test.type === "Identifier" ||
-    test.type === "MemberExpression" ||
-    test.type === "ThisExpression"
-  ) {
-    const root = rootIdentifier(test);
-    return root ? [root] : [];
-  }
-  // A method-call result (`if (m.has(x))`) is not a narrowable reference.
-  if (test.type === "CallExpression") return [];
-  if (test.type === "BinaryExpression") {
-    if (test.operator === "instanceof") {
-      const root = rootIdentifier(test.left);
-      return root ? [root] : [];
-    }
-    // `"error" in result` narrows the RIGHT operand — the discriminated branch
-    // is where `result.error` exists at all.
-    if (test.operator === "in") {
-      const root = rootIdentifier(test.right);
-      return root ? [root] : [];
-    }
-    if (["===", "!==", "==", "!="].includes(test.operator)) {
-      const roots = [];
-      for (const side of [test.left, test.right]) {
-        if (side.type === "Literal") continue;
-        if (side.type === "Identifier" && side.name === "undefined") continue;
-        const root = rootIdentifier(narrowTarget(side));
-        if (root) roots.push(root);
-      }
-      return roots;
-    }
-  }
-  return [];
+  const roots = NARROWED_ROOTS_BY_TYPE[test.type];
+  return roots ? roots(test) : [];
+}
+
+function isAstNode(value) {
+  return Boolean(value) && typeof value.type === "string";
+}
+
+function childNodes(node) {
+  return Object.entries(node)
+    .filter(([key]) => key !== "parent")
+    .flatMap(([, value]) => (Array.isArray(value) ? value : [value]))
+    .filter(isAstNode);
 }
 
 export function identifiersIn(node, acc = new Set()) {
-  if (!node || typeof node.type !== "string") return acc;
-  if (node.type === "Identifier") {
-    acc.add(node.name);
+  if (!isAstNode(node)) return acc;
+  const leafName = ROOT_NAME_BY_TYPE[node.type];
+  if (leafName) {
+    acc.add(leafName(node));
     return acc;
   }
-  if (node.type === "ThisExpression") {
-    acc.add("this");
-    return acc;
-  }
-  for (const key of Object.keys(node)) {
-    if (key === "parent") continue;
-    const value = node[key];
-    if (Array.isArray(value))
-      value.forEach((child) => identifiersIn(child, acc));
-    else if (value && typeof value.type === "string") identifiersIn(value, acc);
-  }
+  for (const child of childNodes(node)) identifiersIn(child, acc);
   return acc;
 }
 
@@ -113,9 +134,7 @@ export function payloadDependsOnNarrowing(test, payloadNode) {
 
 /** The guard's test said the other way round, as source text. */
 export function positiveConditionText(test, sourceCode) {
-  if (test.type === "UnaryExpression" && test.operator === "!") {
-    return sourceCode.getText(test.argument);
-  }
+  if (isNegation(test)) return sourceCode.getText(test.argument);
   if (test.type === "BinaryExpression" && FLIPPED_OPERATOR[test.operator]) {
     const left = sourceCode.getText(test.left);
     const right = sourceCode.getText(test.right);
@@ -137,6 +156,39 @@ export function soleStatementOf(consequent, type) {
   return null;
 }
 
+function isDirective(statement) {
+  return (
+    statement.type === "ExpressionStatement" &&
+    statement.expression.type === "Literal" &&
+    typeof statement.expression.value === "string"
+  );
+}
+
+// The import must land after any leading directive prologue
+// (`"use client"`, `"use strict"`), which has to stay the first statement.
+function lastDirectiveOf(program) {
+  let lastDirective = null;
+  for (const statement of program.body) {
+    if (!isDirective(statement)) return lastDirective;
+    lastDirective = statement;
+  }
+  return lastDirective;
+}
+
+function importedNames(declaration) {
+  return new Set(
+    (declaration?.specifiers ?? [])
+      .filter((specifier) => specifier.type === "ImportSpecifier")
+      .map((specifier) => specifier.imported.name),
+  );
+}
+
+function newImportFix(fixer, lastDirective, importLine) {
+  return lastDirective
+    ? fixer.insertTextAfter(lastDirective, `\n${importLine}`)
+    : fixer.insertTextBeforeRange([0, 0], `${importLine}\n`);
+}
+
 /**
  * An import injector for one module: reports which names are already imported
  * and produces the fixes that add the missing ones, extending an existing
@@ -147,27 +199,9 @@ export function importInjector(program, source, matches) {
     (statement) =>
       statement.type === "ImportDeclaration" && matches(statement.source.value),
   );
-  const imported = new Set(
-    (declaration?.specifiers ?? [])
-      .filter((specifier) => specifier.type === "ImportSpecifier")
-      .map((specifier) => specifier.imported.name),
-  );
+  const imported = importedNames(declaration);
   const injected = new Set();
-
-  // The import must land after any leading directive prologue
-  // (`"use client"`, `"use strict"`), which has to stay the first statement.
-  let lastDirective = null;
-  for (const stmt of program.body) {
-    if (
-      stmt.type === "ExpressionStatement" &&
-      stmt.expression.type === "Literal" &&
-      typeof stmt.expression.value === "string"
-    ) {
-      lastDirective = stmt;
-    } else {
-      break;
-    }
-  }
+  const lastDirective = lastDirectiveOf(program);
 
   return (fixer, name) => {
     if (imported.has(name) || injected.has(name)) return [];
@@ -177,11 +211,7 @@ export function importInjector(program, source, matches) {
       return [fixer.insertTextAfter(last, `, ${name}`)];
     }
     const importLine = `import { ${name} } from "${source}";`;
-    return [
-      lastDirective
-        ? fixer.insertTextAfter(lastDirective, `\n${importLine}`)
-        : fixer.insertTextBeforeRange([0, 0], `${importLine}\n`),
-    ];
+    return [newImportFix(fixer, lastDirective, importLine)];
   };
 }
 

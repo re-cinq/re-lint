@@ -27,6 +27,29 @@ function isRepoPath(url) {
   );
 }
 
+/** Specs write validated-by targets from the repo root and prose links
+ * relative to the document, so either resolving is a live link — but a
+ * path with enough `..` climbs OUT of the repo, and in a git worktree
+ * that lands in the parent checkout where a moved file may still sit.
+ * A link that only resolves outside the repo is dead inside it. */
+function existsInRepo(cwd, candidate) {
+  const inRepo = candidate === cwd || candidate.startsWith(cwd + sep);
+
+  return inRepo && existsSync(candidate);
+}
+
+function isLive(target, docDir, cwd) {
+  // A leading slash is markdown for the REPO root, not the filesystem root.
+  if (target.startsWith("/")) {
+    return existsSync(resolve(cwd, target.slice(1)));
+  }
+
+  return (
+    existsInRepo(cwd, resolve(docDir, target)) ||
+    existsInRepo(cwd, resolve(cwd, target))
+  );
+}
+
 export default {
   meta: {
     type: "problem",
@@ -48,27 +71,7 @@ export default {
 
         // Strip a ?query and a #Lnn anchor; only the file part is a filesystem question.
         const target = url.split(/[?#]/)[0];
-        if (!target) return;
-
-        // A leading slash is markdown for the REPO root, not the filesystem root.
-        if (target.startsWith("/")) {
-          if (existsSync(resolve(cwd, target.slice(1)))) return;
-          context.report({ node, messageId: "dead", data: { target } });
-
-          return;
-        }
-
-        // Specs write validated-by targets from the repo root and prose links
-        // relative to the document, so either resolving is a live link — but a
-        // path with enough `..` climbs OUT of the repo, and in a git worktree
-        // that lands in the parent checkout where a moved file may still sit.
-        // A link that only resolves outside the repo is dead inside it.
-        const inRepo = (candidate) =>
-          candidate === cwd || candidate.startsWith(cwd + sep);
-        const fromDoc = resolve(docDir, target);
-        if (inRepo(fromDoc) && existsSync(fromDoc)) return;
-        const fromRoot = resolve(cwd, target);
-        if (inRepo(fromRoot) && existsSync(fromRoot)) return;
+        if (!target || isLive(target, docDir, cwd)) return;
 
         context.report({ node, messageId: "dead", data: { target } });
       },

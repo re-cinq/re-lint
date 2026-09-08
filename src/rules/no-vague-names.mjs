@@ -42,46 +42,49 @@ const DEFAULT_VAGUE_NAMES = [
   "baz",
 ];
 
+function patternPropertyBinding(property) {
+  return property.type === "Property" ? property.value : property.argument;
+}
+
+/** The sub-patterns a destructuring pattern binds through, by pattern type. */
+const PATTERN_CHILDREN = {
+  ObjectPattern: (pattern) => pattern.properties.map(patternPropertyBinding),
+  ArrayPattern: (pattern) => pattern.elements,
+  AssignmentPattern: (pattern) => [pattern.left],
+  RestElement: (pattern) => [pattern.argument],
+  TSParameterProperty: (pattern) => [pattern.parameter],
+};
+
 function collectPatternIdentifiers(pattern, found) {
   if (!pattern) {
     return;
   }
 
-  switch (pattern.type) {
-    case "Identifier":
-      found.push(pattern);
+  if (pattern.type === "Identifier") {
+    found.push(pattern);
 
-      return;
-    case "ObjectPattern":
-      for (const property of pattern.properties) {
-        collectPatternIdentifiers(
-          property.type === "Property" ? property.value : property.argument,
-          found,
-        );
-      }
-
-      return;
-    case "ArrayPattern":
-      for (const element of pattern.elements) {
-        collectPatternIdentifiers(element, found);
-      }
-
-      return;
-    case "AssignmentPattern":
-      collectPatternIdentifiers(pattern.left, found);
-
-      return;
-    case "RestElement":
-      collectPatternIdentifiers(pattern.argument, found);
-
-      return;
-    case "TSParameterProperty":
-      collectPatternIdentifiers(pattern.parameter, found);
-
-      return;
-    default:
-      return;
+    return;
   }
+
+  const childrenOf = PATTERN_CHILDREN[pattern.type];
+
+  if (!childrenOf) {
+    return;
+  }
+
+  for (const child of childrenOf(pattern)) {
+    collectPatternIdentifiers(child, found);
+  }
+}
+
+function patternIdentifiers(patterns) {
+  const identifiers = [];
+
+  for (const pattern of patterns) {
+    collectPatternIdentifiers(pattern, identifiers);
+  }
+
+  return identifiers;
 }
 
 function isForInitBinding(declarator) {
@@ -93,6 +96,29 @@ function isForInitBinding(declarator) {
     declaration.parent.init === declaration
   );
 }
+
+function functionIdentifiers(node) {
+  const ownName = node.id ? [node.id] : [];
+
+  return [...patternIdentifiers(node.params), ...ownName];
+}
+
+function memberKeyIdentifiers(node) {
+  return !node.computed && node.key.type === "Identifier" ? [node.key] : [];
+}
+
+/** The author-chosen identifiers each declaration node binds. */
+const DECLARED_IDENTIFIERS = {
+  VariableDeclarator: (node) =>
+    isForInitBinding(node) ? [] : patternIdentifiers([node.id]),
+  FunctionDeclaration: functionIdentifiers,
+  FunctionExpression: functionIdentifiers,
+  ArrowFunctionExpression: functionIdentifiers,
+  ClassDeclaration: (node) => (node.id ? [node.id] : []),
+  MethodDefinition: memberKeyIdentifiers,
+  PropertyDefinition: memberKeyIdentifiers,
+  CatchClause: (node) => patternIdentifiers(node.param ? [node.param] : []),
+};
 
 export default {
   meta: {
@@ -120,65 +146,23 @@ export default {
       context.options[0]?.names ?? DEFAULT_VAGUE_NAMES,
     );
 
-    function checkIdentifiers(identifiers) {
-      for (const identifier of identifiers) {
-        if (vagueNames.has(identifier.name)) {
-          context.report({
-            node: identifier,
-            messageId: "vagueName",
-            data: { name: identifier.name },
-          });
-        }
+    function reportVague(identifiers) {
+      for (const identifier of identifiers.filter((id) =>
+        vagueNames.has(id.name),
+      )) {
+        context.report({
+          node: identifier,
+          messageId: "vagueName",
+          data: { name: identifier.name },
+        });
       }
     }
 
-    function checkPatterns(patterns) {
-      const identifiers = [];
-
-      for (const pattern of patterns) {
-        collectPatternIdentifiers(pattern, identifiers);
-      }
-
-      checkIdentifiers(identifiers);
-    }
-
-    function checkFunction(node) {
-      checkPatterns(node.params);
-
-      if (node.id) {
-        checkIdentifiers([node.id]);
-      }
-    }
-
-    return {
-      VariableDeclarator(node) {
-        if (isForInitBinding(node)) {
-          return;
-        }
-
-        checkPatterns([node.id]);
-      },
-      FunctionDeclaration: checkFunction,
-      FunctionExpression: checkFunction,
-      ArrowFunctionExpression: checkFunction,
-      ClassDeclaration(node) {
-        if (node.id) {
-          checkIdentifiers([node.id]);
-        }
-      },
-      MethodDefinition(node) {
-        if (!node.computed && node.key.type === "Identifier") {
-          checkIdentifiers([node.key]);
-        }
-      },
-      PropertyDefinition(node) {
-        if (!node.computed && node.key.type === "Identifier") {
-          checkIdentifiers([node.key]);
-        }
-      },
-      CatchClause(node) {
-        checkPatterns(node.param ? [node.param] : []);
-      },
-    };
+    return Object.fromEntries(
+      Object.entries(DECLARED_IDENTIFIERS).map(([nodeType, identifiersOf]) => [
+        nodeType,
+        (node) => reportVague(identifiersOf(node)),
+      ]),
+    );
   },
 };

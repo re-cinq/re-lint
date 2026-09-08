@@ -23,6 +23,11 @@ const FUNCTION_BOUNDARIES = new Set([
   "StaticBlock",
 ]);
 
+/** `else if`: the child IS its parent's alternate, so it sits at the chain's level. */
+function isElseIfChainLink(parent, child) {
+  return child.type === "IfStatement" && parent.alternate === child;
+}
+
 function enclosingIf(node) {
   let child = node;
   let parent = node.parent;
@@ -32,12 +37,7 @@ function enclosingIf(node) {
       return null;
     }
 
-    const isElseIfChainLink =
-      parent.type === "IfStatement" &&
-      child.type === "IfStatement" &&
-      parent.alternate === child;
-
-    if (parent.type === "IfStatement" && !isElseIfChainLink) {
+    if (parent.type === "IfStatement" && !isElseIfChainLink(parent, child)) {
       return parent;
     }
 

@@ -38,6 +38,7 @@ import {
   ENFORCE_MODULE_SCHEMA,
   enforceSourceFor,
   importInjector,
+  isNegation,
   payloadDependsOnNarrowing,
   positiveConditionText,
   soleStatementOf,
@@ -52,41 +53,136 @@ function enclosingCatchParamName(node) {
   return null;
 }
 
+const CONSTRUCTION_TYPES = new Set(["CallExpression", "NewExpression"]);
+
+function isPropertyRead(node, propertyName) {
+  return (
+    node.type === "MemberExpression" &&
+    !node.computed &&
+    node.property.name === propertyName
+  );
+}
+
+/** The identifier `<id>` of an `<id>.<propertyName>` read, or null. */
+function identifierReadOf(node, propertyName) {
+  if (!isPropertyRead(node, propertyName)) return null;
+  return node.object.type === "Identifier" ? node.object.name : null;
+}
+
+function isSingleArgumentConstruction(node) {
+  return CONSTRUCTION_TYPES.has(node.type) && node.arguments.length === 1;
+}
+
 /**
  * Detect the enforceOk shape: `if (!<id>.ok) throw <callee>(<id>.error);`
  * where <callee> is a plain single-argument factory/class. Returns
  * `{ objectName, typeText }` or null.
  */
 function enforceOkShape(test, thrown, sourceCode) {
-  if (test.type !== "UnaryExpression" || test.operator !== "!") return null;
-  const okRead = test.argument;
-  if (
-    okRead.type !== "MemberExpression" ||
-    okRead.computed ||
-    okRead.property.name !== "ok" ||
-    okRead.object.type !== "Identifier"
-  ) {
+  if (!isNegation(test)) return null;
+  const objectName = identifierReadOf(test.argument, "ok");
+  if (!objectName) return null;
+  if (!isSingleArgumentConstruction(thrown)) return null;
+  if (identifierReadOf(thrown.arguments[0], "error") !== objectName)
     return null;
-  }
-  if (
-    (thrown.type !== "CallExpression" && thrown.type !== "NewExpression") ||
-    thrown.arguments.length !== 1
-  ) {
-    return null;
-  }
-  const errorRead = thrown.arguments[0];
-  if (
-    errorRead.type !== "MemberExpression" ||
-    errorRead.computed ||
-    errorRead.property.name !== "error" ||
-    errorRead.object.type !== "Identifier" ||
-    errorRead.object.name !== okRead.object.name
-  ) {
-    return null;
-  }
+  const decomposed = decomposeErrorExpression(thrown, sourceCode);
+  return decomposed ? { objectName, typeText: decomposed.typeText } : null;
+}
+
+function isEnforceTrueCall(node) {
+  return (
+    node.callee.type === "Identifier" && node.callee.name === "enforceTrue"
+  );
+}
+
+function hasTwoPlainArguments(node) {
+  return (
+    node.arguments.length === 2 && node.arguments[1].type !== "SpreadElement"
+  );
+}
+
+function legacySignatureFix(decomposed, errorArgument) {
+  if (!decomposed) return null;
+  return (fixer) =>
+    fixer.replaceText(
+      errorArgument,
+      `${decomposed.typeText}, ${decomposed.messageText}`,
+    );
+}
+
+function reportLegacyCall(context, node) {
+  if (!isEnforceTrueCall(node) || !hasTwoPlainArguments(node)) return;
+  const errorArgument = node.arguments[1];
+  const decomposed = decomposeErrorExpression(
+    errorArgument,
+    context.sourceCode,
+  );
+  context.report({
+    node,
+    messageId: "legacySignature",
+    fix: legacySignatureFix(decomposed, errorArgument),
+  });
+}
+
+// Rethrow of the caught error is control flow, not a guard.
+function isRethrow(thrown, node) {
+  return (
+    thrown.type === "Identifier" &&
+    thrown.name === enclosingCatchParamName(node)
+  );
+}
+
+/** The expression an `if (…) throw …` guard throws, or null for any other if. */
+function guardedThrow(node) {
+  if (node.alternate) return null;
+  const throwStatement = soleStatementOf(node.consequent, "ThrowStatement");
+  const thrown = throwStatement?.argument;
+  if (!thrown) return null;
+  return isRethrow(thrown, node) ? null : thrown;
+}
+
+function enforceOkReport(node, okShape, importFixes) {
+  return {
+    node,
+    messageId: "preferEnforceOk",
+    fix: (fixer) => [
+      fixer.replaceText(
+        node,
+        `enforceOk(${okShape.objectName}, ${okShape.typeText});`,
+      ),
+      ...importFixes(fixer, "enforceOk"),
+    ],
+  };
+}
+
+function enforceTrueReport(node, decomposed, sourceCode, importFixes) {
+  const condition = positiveConditionText(node.test, sourceCode);
+  return {
+    node,
+    messageId: "preferEnforce",
+    fix: (fixer) => [
+      fixer.replaceText(
+        node,
+        `enforceTrue(${condition}, ${decomposed.typeText}, ${decomposed.messageText});`,
+      ),
+      ...importFixes(fixer, "enforceTrue"),
+    ],
+  };
+}
+
+/**
+ * The report for an if-throw guard, or null when neither helper can model it:
+ * a thrown value that reads a variable the test narrows (enforceTrue can't
+ * preserve that narrowing, see narrowedRoots), or one that is not
+ * decomposable into (ErrorType, message).
+ */
+function guardReport(node, thrown, sourceCode, importFixes) {
+  const okShape = enforceOkShape(node.test, thrown, sourceCode);
+  if (okShape) return enforceOkReport(node, okShape, importFixes);
+  if (payloadDependsOnNarrowing(node.test, thrown)) return null;
   const decomposed = decomposeErrorExpression(thrown, sourceCode);
   if (!decomposed) return null;
-  return { objectName: okRead.object.name, typeText: decomposed.typeText };
+  return enforceTrueReport(node, decomposed, sourceCode, importFixes);
 }
 
 export default {
@@ -126,94 +222,13 @@ export default {
 
     return {
       CallExpression(node) {
-        if (
-          node.callee.type !== "Identifier" ||
-          node.callee.name !== "enforceTrue" ||
-          node.arguments.length !== 2 ||
-          node.arguments[1].type === "SpreadElement"
-        ) {
-          return;
-        }
-
-        const decomposed = decomposeErrorExpression(
-          node.arguments[1],
-          sourceCode,
-        );
-        context.report({
-          node,
-          messageId: "legacySignature",
-          fix: decomposed
-            ? (fixer) =>
-                fixer.replaceText(
-                  node.arguments[1],
-                  `${decomposed.typeText}, ${decomposed.messageText}`,
-                )
-            : null,
-        });
+        reportLegacyCall(context, node);
       },
-
       IfStatement(node) {
-        if (node.alternate) return;
-
-        const throwStatement = soleStatementOf(
-          node.consequent,
-          "ThrowStatement",
-        );
-        if (!throwStatement || !throwStatement.argument) return;
-
-        // Rethrow of the caught error is control flow, not a guard.
-        if (
-          throwStatement.argument.type === "Identifier" &&
-          throwStatement.argument.name === enclosingCatchParamName(node)
-        ) {
-          return;
-        }
-
-        const okShape = enforceOkShape(
-          node.test,
-          throwStatement.argument,
-          sourceCode,
-        );
-        if (okShape) {
-          context.report({
-            node,
-            messageId: "preferEnforceOk",
-            fix: (fixer) => [
-              fixer.replaceText(
-                node,
-                `enforceOk(${okShape.objectName}, ${okShape.typeText});`,
-              ),
-              ...importFixes(fixer, "enforceOk"),
-            ],
-          });
-          return;
-        }
-
-        // Skip when the thrown value depends on a variable the test narrows —
-        // enforceTrue can't preserve that narrowing (see narrowedRoots).
-        if (payloadDependsOnNarrowing(node.test, throwStatement.argument)) {
-          return;
-        }
-
-        // Only the shapes the 3-arg signature can express get rewritten;
-        // pre-built errors and multi-arg constructors stay as if-throws.
-        const decomposed = decomposeErrorExpression(
-          throwStatement.argument,
-          sourceCode,
-        );
-        if (!decomposed) return;
-
-        context.report({
-          node,
-          messageId: "preferEnforce",
-          fix: (fixer) => [
-            fixer.replaceText(
-              node,
-              `enforceTrue(${positiveConditionText(node.test, sourceCode)}, ${decomposed.typeText}, ${decomposed.messageText});`,
-            ),
-            ...importFixes(fixer, "enforceTrue"),
-          ],
-        });
+        const thrown = guardedThrow(node);
+        if (!thrown) return;
+        const report = guardReport(node, thrown, sourceCode, importFixes);
+        if (report) context.report(report);
       },
     };
   },

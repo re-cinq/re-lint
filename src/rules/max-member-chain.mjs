@@ -42,6 +42,10 @@ const DEFAULT_ALLOWED_ROOTS = new Set([
   "Date",
 ]);
 const EXEMPT_ROOT_TYPES = new Set(["ThisExpression", "Super", "MetaProperty"]);
+const TRANSPARENT_WRAPPERS = new Set([
+  "ChainExpression",
+  "TSNonNullExpression",
+]);
 
 function isCalled(node) {
   const parent = node.parent;
@@ -64,25 +68,27 @@ function continuesChain(node) {
   }
 
   const isTransparentWrapper =
-    isCalled(node) ||
-    parent.type === "ChainExpression" ||
-    parent.type === "TSNonNullExpression";
+    isCalled(node) || TRANSPARENT_WRAPPERS.has(parent.type);
 
   return isTransparentWrapper && continuesChain(parent);
+}
+
+/** The node a call or transparent wrapper is applied to; null for anything else. */
+function wrappedOf(node) {
+  if (node.type === "CallExpression") {
+    return node.callee;
+  }
+
+  return TRANSPARENT_WRAPPERS.has(node.type) ? node.expression : null;
 }
 
 function unwrapToMember(node) {
   let current = node;
 
   while (current.type !== "MemberExpression") {
-    if (current.type === "CallExpression") {
-      current = current.callee;
-    } else if (
-      current.type === "ChainExpression" ||
-      current.type === "TSNonNullExpression"
-    ) {
-      current = current.expression;
-    } else {
+    current = wrappedOf(current);
+
+    if (!current) {
       return null;
     }
   }

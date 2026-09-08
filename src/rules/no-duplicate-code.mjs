@@ -10,6 +10,10 @@
  * scan — that is how a just-removed clone stops being reported on BOTH sides
  * without a restart. A clone newly introduced by editing some other file is
  * seen once that file is linted; the file at hand was not part of it before.
+ *
+ * `roots` are directories: jscpd walks them itself and treats a glob as a
+ * path that does not exist, scanning nothing, so a missing root is reported
+ * instead of silently passing.
  */
 
 import { statSync } from "node:fs";
@@ -33,6 +37,7 @@ function scan(cwd, options) {
     minLines: options.minLines,
     mode: options.mode,
     ignore: options.ignore,
+    formats: options.formats,
   });
 }
 
@@ -106,6 +111,7 @@ export default {
           mode: { enum: ["mild", "weak", "strict"] },
           ignore: { type: "array", items: { type: "string" } },
           roots: { type: "array", items: { type: "string" }, minItems: 1 },
+          formats: { type: "array", items: { type: "string" } },
           jscpdBin: { type: "string" },
         },
         additionalProperties: false,

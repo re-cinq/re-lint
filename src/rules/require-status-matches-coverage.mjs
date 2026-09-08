@@ -36,6 +36,30 @@ const REQUIREMENT = {
   adr: "Add `status: draft` to the YAML frontmatter (one of draft / in progress / shipped / rejected / retired).",
 };
 
+function mismatchReport(mismatch, kind) {
+  const loc = { line: mismatch.line, column: 1 };
+
+  if (mismatch.reason === "untagged") {
+    return {
+      loc,
+      messageId: "untagged",
+      data: { corpus: CORPUS[kind], requirement: REQUIREMENT[kind] },
+    };
+  }
+
+  return {
+    loc,
+    messageId: "statusMismatch",
+    data: {
+      corpus: CORPUS[kind],
+      actual: mismatch.actual,
+      expected: statusLabel(mismatch.expected, kind),
+      linked: mismatch.linked,
+      testable: mismatch.testable,
+    },
+  };
+}
+
 export default {
   meta: {
     type: "problem",
@@ -70,30 +94,9 @@ export default {
       "root:exit"() {
         const mismatch = statusMismatch(text, kind);
 
-        if (!mismatch) {
-          return;
+        if (mismatch) {
+          context.report(mismatchReport(mismatch, kind));
         }
-
-        if (mismatch.reason === "untagged") {
-          context.report({
-            loc: { line: mismatch.line, column: 1 },
-            messageId: "untagged",
-            data: { corpus: CORPUS[kind], requirement: REQUIREMENT[kind] },
-          });
-
-          return;
-        }
-        context.report({
-          loc: { line: mismatch.line, column: 1 },
-          messageId: "statusMismatch",
-          data: {
-            corpus: CORPUS[kind],
-            actual: mismatch.actual,
-            expected: statusLabel(mismatch.expected, kind),
-            linked: mismatch.linked,
-            testable: mismatch.testable,
-          },
-        });
       },
     };
   },

@@ -133,6 +133,49 @@ function isLinked(entry, startLine, endLine) {
   return false;
 }
 
+// With no corpus under specsRoot, every test would flag as unlinked — a
+// false-positive storm that means the run started outside the repo root
+// (e.g. `eslint apps/floor/` in a subdir). Warn once and skip rather than
+// report thousands of misleading errors.
+function warnMissingCorpusOnce(specsRoot, roots) {
+  if (warnedMissingCorpus.has(specsRoot)) {
+    return;
+  }
+  warnedMissingCorpus.add(specsRoot);
+  console.warn(
+    `require-spec-link: no ${roots.join("/")} directory under ${specsRoot} — ` +
+      "run eslint from the repo root (or pass options.specsRoot). Skipping the spec-link check.",
+  );
+}
+
+function testName(sourceCode, first) {
+  return first.type === "Literal"
+    ? String(first.value)
+    : sourceCode.getText(first);
+}
+
+function reportUnlinked(context, node, corpus) {
+  if (!isNamedTestCall(node)) {
+    return;
+  }
+  const startLine = node.loc.start.line;
+
+  if (isLinked(corpus.entry, startLine, node.loc.end.line)) {
+    return;
+  }
+
+  context.report({
+    node: node.callee,
+    messageId: "unlinkedTest",
+    data: {
+      name: testName(context.sourceCode, node.arguments[0]),
+      file: corpus.relPath,
+      line: String(startLine),
+      roots: corpus.roots.map((root) => `${root}/**/*.md`).join(" or "),
+    },
+  });
+}
+
 export default {
   meta: {
     type: "problem",
@@ -167,54 +210,21 @@ export default {
     const specsRoot = options.specsRoot ?? context.cwd;
     const roots = options.roots ?? ["specs", "adrs"];
 
-    // With no corpus under specsRoot, every test would flag as unlinked — a
-    // false-positive storm that means the run started outside the repo root
-    // (e.g. `eslint apps/floor/` in a subdir). Warn once and skip rather than
-    // report thousands of misleading errors.
     if (!corpusExists(specsRoot, roots)) {
-      if (!warnedMissingCorpus.has(specsRoot)) {
-        warnedMissingCorpus.add(specsRoot);
-        console.warn(
-          `require-spec-link: no ${roots.join("/")} directory under ${specsRoot} — ` +
-            "run eslint from the repo root (or pass options.specsRoot). Skipping the spec-link check.",
-        );
-      }
+      warnMissingCorpusOnce(specsRoot, roots);
 
       return {};
     }
 
-    const index = getIndex(specsRoot, roots);
     const relPath = toPosix(path.relative(specsRoot, context.filename));
-    const entry = index.get(relPath);
+    const corpus = {
+      entry: getIndex(specsRoot, roots).get(relPath),
+      relPath,
+      roots,
+    };
 
     return {
-      CallExpression(node) {
-        if (!isNamedTestCall(node)) {
-          return;
-        }
-        const startLine = node.loc.start.line;
-        const endLine = node.loc.end.line;
-
-        if (isLinked(entry, startLine, endLine)) {
-          return;
-        }
-        const first = node.arguments[0];
-        const name =
-          first.type === "Literal"
-            ? String(first.value)
-            : context.sourceCode.getText(first);
-
-        context.report({
-          node: node.callee,
-          messageId: "unlinkedTest",
-          data: {
-            name,
-            file: relPath,
-            line: String(startLine),
-            roots: roots.map((root) => `${root}/**/*.md`).join(" or "),
-          },
-        });
-      },
+      CallExpression: (node) => reportUnlinked(context, node, corpus),
     };
   },
 };

@@ -93,6 +93,23 @@ function loadsRealSubject(source, firstPartyScopes) {
   );
 }
 
+/** The specifier a static import loads at runtime; type-only imports are erased, so null. */
+function staticImportSource(node) {
+  return node.importKind === "type" ? null : node.source.value;
+}
+
+/** `vi.mock(...)` then `await import("./subject.js")` is the standard shape
+ * for testing a module with its dependencies replaced — the static import
+ * has to be deferred, so counting only ImportDeclaration would flag every
+ * suite that mocks anything. */
+function dynamicImportSource(node) {
+  const { source } = node;
+  const isLiteralPath =
+    source.type === "Literal" && typeof source.value === "string";
+
+  return isLiteralPath ? source.value : null;
+}
+
 export default {
   meta: {
     type: "problem",
@@ -125,32 +142,14 @@ export default {
     const firstPartyScopes = context.options[0]?.firstPartyScopes ?? [];
     let importsSubject = false;
 
+    function recordImport(source) {
+      importsSubject ||=
+        source !== null && loadsRealSubject(source, firstPartyScopes);
+    }
+
     return {
-      // Type-only imports are erased at runtime, so they load nothing.
-      ImportDeclaration(node) {
-        if (node.importKind === "type") {
-          return;
-        }
-
-        if (loadsRealSubject(node.source.value, firstPartyScopes)) {
-          importsSubject = true;
-        }
-      },
-
-      // `vi.mock(...)` then `await import("./subject.js")` is the standard shape
-      // for testing a module with its dependencies replaced — the static import
-      // has to be deferred, so counting only ImportDeclaration would flag every
-      // suite that mocks anything.
-      ImportExpression(node) {
-        if (
-          node.source.type === "Literal" &&
-          typeof node.source.value === "string" &&
-          loadsRealSubject(node.source.value, firstPartyScopes)
-        ) {
-          importsSubject = true;
-        }
-      },
-
+      ImportDeclaration: (node) => recordImport(staticImportSource(node)),
+      ImportExpression: (node) => recordImport(dynamicImportSource(node)),
       "Program:exit"(node) {
         if (importsSubject) {
           return;

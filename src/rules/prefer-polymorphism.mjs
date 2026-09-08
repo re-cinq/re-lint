@@ -64,24 +64,30 @@ function chainTests(head) {
   return tests;
 }
 
+function isEqualityTest(test) {
+  return (
+    test?.type === "BinaryExpression" && EQUALITY_OPERATORS.has(test.operator)
+  );
+}
+
+function memberComparedToLiteral(member, literal, discriminants) {
+  const isTagComparison =
+    literal.type === "Literal" && isDiscriminant(member, discriminants);
+
+  return isTagComparison ? member : null;
+}
+
 function comparedMember(test, discriminants) {
-  if (
-    !test ||
-    test.type !== "BinaryExpression" ||
-    !EQUALITY_OPERATORS.has(test.operator)
-  ) {
+  if (!isEqualityTest(test)) {
     return null;
   }
 
   const { left, right } = test;
 
-  if (right.type === "Literal" && isDiscriminant(left, discriminants)) {
-    return left;
-  }
-
-  return left.type === "Literal" && isDiscriminant(right, discriminants)
-    ? right
-    : null;
+  return (
+    memberComparedToLiteral(left, right, discriminants) ??
+    memberComparedToLiteral(right, left, discriminants)
+  );
 }
 
 function dominantDiscriminant(members, sourceCode) {

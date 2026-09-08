@@ -55,6 +55,10 @@ function isComponentName(name) {
   return typeof name === "string" && /^[A-Z]/.test(name);
 }
 
+function isComponentWithProps(node) {
+  return isComponentName(componentName(node)) && Boolean(node.params[0]);
+}
+
 function rootIdentifier(node) {
   let current = node;
   while (current && current.type === "MemberExpression") {
@@ -62,6 +66,59 @@ function rootIdentifier(node) {
   }
 
   return current && current.type === "Identifier" ? current : null;
+}
+
+function isDeclaredWithin(def, [start, end]) {
+  return (
+    def?.type === "Parameter" &&
+    def.name.range[0] >= start &&
+    def.name.range[1] <= end
+  );
+}
+
+/** Every identifier that refers to the component's first (props) parameter. */
+function propsReferences(sourceCode, node) {
+  const propsRange = node.params[0].range;
+
+  return sourceCode
+    .getDeclaredVariables(node)
+    .filter((variable) => isDeclaredWithin(variable.defs[0], propsRange))
+    .flatMap((variable) => variable.references)
+    .map((reference) => reference.identifier);
+}
+
+function isMutatorCall(callee) {
+  return (
+    callee.type === "MemberExpression" &&
+    !callee.computed &&
+    callee.property.type === "Identifier" &&
+    MUTATORS.has(callee.property.name)
+  );
+}
+
+function visitors(collectProps, flagIfProp) {
+  return {
+    FunctionDeclaration: collectProps,
+    FunctionExpression: collectProps,
+    ArrowFunctionExpression: collectProps,
+
+    AssignmentExpression(node) {
+      flagIfProp(node.left, node);
+    },
+    UpdateExpression(node) {
+      flagIfProp(node.argument, node);
+    },
+    UnaryExpression(node) {
+      if (node.operator === "delete") {
+        flagIfProp(node.argument, node);
+      }
+    },
+    CallExpression(node) {
+      if (isMutatorCall(node.callee)) {
+        flagIfProp(node.callee.object, node);
+      }
+    },
+  };
 }
 
 export default {
@@ -83,24 +140,12 @@ export default {
     const propRefs = new Set();
 
     function collectProps(node) {
-      if (!isComponentName(componentName(node)) || !node.params[0]) {
+      if (!isComponentWithProps(node)) {
         return;
       }
 
-      const [start, end] = node.params[0].range;
-      for (const variable of sourceCode.getDeclaredVariables(node)) {
-        const def = variable.defs[0];
-        if (!def || def.type !== "Parameter") {
-          continue;
-        }
-
-        if (def.name.range[0] < start || def.name.range[1] > end) {
-          continue;
-        }
-
-        for (const reference of variable.references) {
-          propRefs.add(reference.identifier);
-        }
+      for (const identifier of propsReferences(sourceCode, node)) {
+        propRefs.add(identifier);
       }
     }
 
@@ -115,33 +160,6 @@ export default {
       }
     }
 
-    return {
-      FunctionDeclaration: collectProps,
-      FunctionExpression: collectProps,
-      ArrowFunctionExpression: collectProps,
-
-      AssignmentExpression(node) {
-        flagIfProp(node.left, node);
-      },
-      UpdateExpression(node) {
-        flagIfProp(node.argument, node);
-      },
-      UnaryExpression(node) {
-        if (node.operator === "delete") {
-          flagIfProp(node.argument, node);
-        }
-      },
-      CallExpression(node) {
-        const callee = node.callee;
-        if (
-          callee.type === "MemberExpression" &&
-          !callee.computed &&
-          callee.property.type === "Identifier" &&
-          MUTATORS.has(callee.property.name)
-        ) {
-          flagIfProp(callee.object, node);
-        }
-      },
-    };
+    return visitors(collectProps, flagIfProp);
   },
 };

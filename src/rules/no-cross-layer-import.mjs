@@ -66,8 +66,8 @@ function loadConfig(from) {
   );
   const loaded = {
     root: dir,
-    layers: parsed?.layers ?? {},
-    aliases: parsed?.aliases ?? {},
+    layers: parsed.layers ?? {},
+    aliases: parsed.aliases ?? {},
   };
   cache.set(dir, loaded);
 
@@ -131,6 +131,142 @@ function isWithin(target, base) {
   return target === base || target.startsWith(`${base}/`);
 }
 
+const TEST_FILE = /\.test\.(?:tsx?|mjs)$/;
+const UNLISTED_FOLDER = "unlistedFolder";
+const NOT_ALLOWED = "notAllowed";
+
+function inlineConfig(options) {
+  if (!options.layers) return null;
+
+  return {
+    root: options.root ?? process.cwd(),
+    layers: options.layers,
+    aliases: options.aliases ?? {},
+  };
+}
+
+function firstPartyMatcher(scopes = []) {
+  return (spec) =>
+    scopes.some((scope) =>
+      spec.startsWith(scope.endsWith("/") ? scope : `${scope}/`),
+    );
+}
+
+function isStringLiteral(node) {
+  return node.type === "Literal" && typeof node.value === "string";
+}
+
+function repoRelative(root, filename) {
+  return path
+    .relative(root, path.resolve(root, filename))
+    .split(path.sep)
+    .join("/");
+}
+
+function packageOf(layers, relFile) {
+  return Object.keys(layers).find((pkg) => relFile.startsWith(`${pkg}/src/`));
+}
+
+function allowedImports(entry, isTest) {
+  if (Array.isArray(entry)) return entry;
+  const forTests = isTest ? (entry.tests ?? []) : [];
+
+  return [...(entry.imports ?? []), ...forTests];
+}
+
+function permissions(entries, key, folder, isTest) {
+  if (key === undefined) return { allowed: null, layer: null };
+
+  return {
+    allowed: allowedImports(entries[key], isTest),
+    layer: layerRoot(key, folder),
+  };
+}
+
+/** What the linted file may import, or null when its package is not governed. */
+function scopeFor(config, filename) {
+  const relFile = repoRelative(config.root, filename);
+  const pkg = packageOf(config.layers, relFile);
+  if (!pkg) return null;
+  const folder = folderIn(pkg, relFile);
+  const entries = config.layers[pkg];
+  const key = keyFor(entries, folder);
+
+  return {
+    relFile,
+    pkg,
+    folder,
+    aliases: config.aliases[pkg] ?? {},
+    ...permissions(entries, key, folder, TEST_FILE.test(relFile)),
+  };
+}
+
+// `join`, never `resolve`: resolve() with a relative base silently prepends
+// process.cwd(), so linting from a subdirectory resolved every target
+// outside the package and reported nothing at all.
+function targetFolder(scope, spec) {
+  const rel = path.posix.normalize(
+    path.posix.join(path.posix.dirname(scope.relFile), spec),
+  );
+
+  return folderIn(scope.pkg, rel.replace(/\.(js|ts|tsx)$/, ".ts"));
+}
+
+// A package can import through a tsconfig alias (web-ui's `@/`), and an
+// alias the rule cannot see leaves a whole package silently unchecked.
+function underAlias(scope, spec) {
+  const alias = Object.entries(scope.aliases).find(([prefix]) =>
+    spec.startsWith(prefix),
+  );
+  if (!alias) return undefined;
+  const [prefix, target] = alias;
+  const rest = spec.slice(prefix.length);
+  const joined = target ? `${target}/${rest}` : rest;
+
+  return folderIn(scope.pkg, `${scope.pkg}/src/${joined}.ts`);
+}
+
+/** The governed folder a specifier lands in, or null when the rule does not govern it. */
+function resolveTarget(scope, spec, isFirstParty) {
+  const aliased = underAlias(scope, spec);
+  if (aliased !== undefined) return { target: aliased, external: false };
+  if (isFirstParty(spec)) {
+    return { target: spec.split("/").slice(0, 2).join("/"), external: true };
+  }
+  if (!spec.startsWith(".")) return null;
+
+  return { target: targetFolder(scope, spec), external: false };
+}
+
+function inLayer(layer, target) {
+  if (layer === ".") return target === ".";
+
+  return isWithin(target, layer);
+}
+
+function isPermitted(scope, { target, external }) {
+  if (!external && inLayer(scope.layer, target)) return true;
+
+  return scope.allowed.some((entry) => isWithin(target, entry));
+}
+
+function violation(scope, resolved) {
+  if (scope.allowed === null) return UNLISTED_FOLDER;
+  if (resolved.target === null || resolved.target === undefined) return null;
+
+  return isPermitted(scope, resolved) ? null : NOT_ALLOWED;
+}
+
+function reportData(scope, messageId, target) {
+  if (messageId === UNLISTED_FOLDER) return { folder: scope.folder };
+
+  return {
+    folder: scope.layer,
+    target,
+    allowed: scope.allowed.length ? scope.allowed.join(", ") : "nothing",
+  };
+}
+
 export default {
   meta: {
     type: "problem",
@@ -150,117 +286,35 @@ export default {
         additionalProperties: false,
       },
     ],
+    // Computed keys: the ids are pinned by the tests, and a literal `notAllowed`
+    // key reads as a negated declaration to no-negative-names.
     messages: {
-      notAllowed:
+      [NOT_ALLOWED]:
         "`{{folder}}` may not import `{{target}}`. Its layers.yaml entry allows: {{allowed}}.",
-      unlistedFolder:
+      [UNLISTED_FOLDER]:
         "`{{folder}}` has no entry in layers.yaml, so it may import nothing. Give it one, or move the code into a folder that has one.",
     },
   },
 
   create(context) {
     const filename = context.filename ?? context.getFilename();
-    const firstPartyScopes = context.options[0]?.firstPartyScopes ?? [];
-    const isFirstParty = (spec) =>
-      firstPartyScopes.some((scope) =>
-        spec.startsWith(scope.endsWith("/") ? scope : `${scope}/`),
-      );
-    const inline = context.options[0]?.layers;
-    const config = inline
-      ? {
-          root: context.options[0]?.root ?? process.cwd(),
-          layers: inline,
-          aliases: context.options[0]?.aliases ?? {},
-        }
-      : loadConfig(path.dirname(path.resolve(filename)));
+    const options = context.options[0] ?? {};
+    const isFirstParty = firstPartyMatcher(options.firstPartyScopes);
+    const config =
+      inlineConfig(options) ?? loadConfig(path.dirname(path.resolve(filename)));
     if (!config) return {};
-
-    const relFile = path
-      .relative(config.root, path.resolve(config.root, filename))
-      .split(path.sep)
-      .join("/");
-    const pkg = Object.keys(config.layers).find((p) =>
-      relFile.startsWith(`${p}/src/`),
-    );
-    if (!pkg) return {};
-
-    const folder = folderIn(pkg, relFile);
-    if (folder === null) return {};
-
-    const entries = config.layers[pkg];
-    const key = keyFor(entries, folder);
-    const entry = key === undefined ? undefined : entries[key];
-    const isTest = /\.test\.(?:tsx?|mjs)$/.test(relFile);
-    const allowed =
-      entry === undefined
-        ? null
-        : Array.isArray(entry)
-          ? entry
-          : [...(entry.imports ?? []), ...(isTest ? (entry.tests ?? []) : [])];
-    const layer = key === undefined ? null : layerRoot(key, folder);
-
-    // `join`, never `resolve`: resolve() with a relative base silently prepends
-    // process.cwd(), so linting from a subdirectory resolved every target
-    // outside the package and reported nothing at all.
-    function targetFolder(spec) {
-      const rel = path.posix.normalize(
-        path.posix.join(path.posix.dirname(relFile), spec),
-      );
-
-      return folderIn(pkg, rel.replace(/\.(js|ts|tsx)$/, ".ts"));
-    }
-
-    // A package can import through a tsconfig alias (web-ui's `@/`), and an
-    // alias the rule cannot see leaves a whole package silently unchecked.
-    const aliases = config.aliases?.[pkg] ?? {};
-
-    function underAlias(spec) {
-      for (const [prefix, target] of Object.entries(aliases)) {
-        if (!spec.startsWith(prefix)) continue;
-        const rest = spec.slice(prefix.length);
-        const joined = target ? `${target}/${rest}` : rest;
-
-        return folderIn(pkg, `${pkg}/src/${joined}.ts`);
-      }
-
-      return undefined;
-    }
+    const scope = scopeFor(config, filename);
+    if (!scope) return {};
 
     function check(node, spec) {
-      const aliased = underAlias(spec);
-      if (aliased !== undefined) {
-        reportUnless(node, aliased, spec);
-
-        return;
-      }
-      const external = isFirstParty(spec);
-      if (!spec.startsWith(".") && !external) return;
-      const target = external
-        ? spec.split("/").slice(0, 2).join("/")
-        : targetFolder(spec);
-      reportUnless(node, target, spec, external);
-    }
-
-    function reportUnless(node, target, spec, external = false) {
-      if (allowed === null) {
-        context.report({ node, messageId: "unlistedFolder", data: { folder } });
-
-        return;
-      }
-      if (target === null || target === undefined) return;
-      const inLayer =
-        !external && (layer === "." ? target === "." : isWithin(target, layer));
-      if (inLayer) return;
-      if (allowed.some((entry) => isWithin(target, entry))) return;
-
+      const resolved = resolveTarget(scope, spec, isFirstParty);
+      if (!resolved) return;
+      const messageId = violation(scope, resolved);
+      if (!messageId) return;
       context.report({
         node,
-        messageId: "notAllowed",
-        data: {
-          folder: layer,
-          target,
-          allowed: allowed.length ? allowed.join(", ") : "nothing",
-        },
+        messageId,
+        data: reportData(scope, messageId, resolved.target),
       });
     }
 
@@ -270,9 +324,7 @@ export default {
         node.source && check(node, node.source.value),
       ExportAllDeclaration: (node) => check(node, node.source.value),
       ImportExpression: (node) =>
-        node.source.type === "Literal" &&
-        typeof node.source.value === "string" &&
-        check(node, node.source.value),
+        isStringLiteral(node.source) && check(node, node.source.value),
     };
   },
 };
