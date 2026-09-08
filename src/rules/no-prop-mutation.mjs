@@ -8,13 +8,16 @@
  * Scope-based (resolves each mutation's root identifier back to the props-param
  * variable, so a local that merely shares a prop's name is never flagged). Only
  * the FIRST parameter is treated as props — a forwardRef's second `ref` arg and
- * its `.current` writes are left alone.
+ * its `.current` writes are left alone. A component is any function whose name
+ * starts with a capital letter.
+ *
+ * No path gate of its own: the consumer scopes it to its UI files with a
+ * `files:` glob.
  *
  * Detect-only: the fix is to lift state to the owner and pass an action down —
- * human judgment, not a mechanical rewrite. web-ui only.
+ * human judgment, not a mechanical rewrite.
  */
 
-const WEBUI_MARKER = "/apps/web-ui/";
 const MUTATORS = new Set([
   "push",
   "pop",
@@ -66,7 +69,7 @@ export default {
     type: "problem",
     docs: {
       description:
-        "disallow mutating props in web-ui components — data flows down read-only, changes flow up via callback props (DDAU)",
+        "disallow mutating props in components — data flows down read-only, changes flow up via callback props (DDAU)",
     },
     schema: [],
     messages: {
@@ -76,10 +79,6 @@ export default {
   },
 
   create(context) {
-    if (!context.filename.replace(/\\/g, "/").includes(WEBUI_MARKER)) {
-      return {};
-    }
-
     const sourceCode = context.sourceCode;
     const propRefs = new Set();
 

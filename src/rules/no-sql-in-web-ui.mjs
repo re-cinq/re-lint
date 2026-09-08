@@ -1,20 +1,19 @@
 /**
- * no-sql-in-web-ui — the web UI is a presentation tier, not a database client.
- * Every read and write belongs to `lore-api` behind its OpenAPI contract
- * (`@/lib/api/client`), so a schema change breaks one deployable instead of two
- * and the UI never needs Postgres credentials. This flags SQL text — string or
- * template literal — in any file under `apps/web-ui/`.
+ * no-sql-in-web-ui — a presentation tier is not a database client. Every read
+ * and write belongs behind an API route with a typed client, so a schema change
+ * breaks one deployable instead of two and the UI never needs database
+ * credentials. This flags SQL text — string or template literal — in any file
+ * the consumer scopes the rule to (there is no path gate of its own; use a
+ * `files:` glob for the UI package).
  *
  * Detection is SQL-cased on purpose: the keywords must be uppercase, the way
- * every query in this repo is written. Matching case-insensitively would flag
+ * queries are conventionally written. Matching case-insensitively would flag
  * ordinary UI copy ("Select a repo from the list"), and a rule that cries wolf
  * gets disabled rather than obeyed.
  *
- * Detect-only: the fix is an lore-api route plus a typed client call, which is
- * a design decision per query, not a codemod.
+ * Detect-only: the fix is an API route plus a typed client call, which is a
+ * design decision per query, not a codemod.
  */
-
-const WEBUI_MARKER = "/apps/web-ui/";
 
 // A bounded gap between paired keywords — unbounded `[\s\S]*?` would let a long
 // prose blob with a stray SELECT and a much later FROM read as a query.
@@ -46,20 +45,16 @@ export default {
     type: "problem",
     docs: {
       description:
-        "disallow SQL in apps/web-ui — the UI reads and writes through the lore-api HTTP contract, never through the database",
+        "disallow SQL in the UI tier — the UI reads and writes through an HTTP API contract, never through the database",
     },
     schema: [],
     messages: {
       sqlInWebUi:
-        "SQL does not belong in web-ui. Move this query behind a lore-api route (apps/lore-api/src/api/routes/) and call it from the typed client (@/lib/api/client).",
+        "SQL does not belong in the UI. Move the query behind an API route and call it from a typed client.",
     },
   },
 
   create(context) {
-    if (!context.filename.replace(/\\/g, "/").includes(WEBUI_MARKER)) {
-      return {};
-    }
-
     function report(node) {
       context.report({ node, messageId: "sqlInWebUi" });
     }

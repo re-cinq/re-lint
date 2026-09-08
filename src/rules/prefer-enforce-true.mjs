@@ -21,35 +21,27 @@
  * WITHOUT type information, so tsc never sees a legacy-form call that only
  * lives in a test.
  *
- * Import target is resolved per file: a relative path inside the shared package
- * (self-package imports resolve to unbuilt dist), the package subpath elsewhere,
- * and web-ui is skipped entirely — it cannot import `@re-cinq/lore-shared`.
+ * The import target comes from the `enforceModule` option:
+ *
+ *   { specifier: "@org/shared/lib/enforce.js", sourceDir?: "libs/shared/src" }
+ *
+ * `specifier` is what the fix imports from. Inside `sourceDir` (the package
+ * that OWNS the helper, where a self-package import would resolve to unbuilt
+ * dist) the fix imports `lib/enforce.js` by relative path instead. There is no
+ * default: with `enforceModule` absent the rule reports nothing, because a
+ * report whose fix cannot name the helper is noise. Packages that cannot
+ * import the helper at all turn the rule off in an override.
  */
 
-import path from "node:path";
 import { decomposeErrorExpression } from "./lib/error-shape.mjs";
 import {
+  ENFORCE_MODULE_SCHEMA,
+  enforceSourceFor,
   importInjector,
   payloadDependsOnNarrowing,
   positiveConditionText,
   soleStatementOf,
 } from "./lib/guard-shape.mjs";
-
-const PACKAGE_SOURCE = "@re-cinq/lore-shared/lib/enforce.js";
-const SHARED_SRC_MARKER = "/libs/shared/src/";
-const WEB_UI_MARKER = "/apps/web-ui/";
-
-/** Where the enforce helpers should be imported from, given the file being linted. */
-function enforceSourceFor(filename) {
-  const unix = filename.replace(/\\/g, "/");
-  const idx = unix.indexOf(SHARED_SRC_MARKER);
-  if (idx === -1) return PACKAGE_SOURCE;
-  const srcRoot = unix.slice(0, idx + SHARED_SRC_MARKER.length);
-  const rel = path
-    .relative(path.dirname(unix), `${srcRoot}lib/enforce.js`)
-    .replace(/\\/g, "/");
-  return rel.startsWith(".") ? rel : `./${rel}`;
-}
 
 function enclosingCatchParamName(node) {
   for (let current = node.parent; current; current = current.parent) {
@@ -105,7 +97,13 @@ export default {
         "prefer enforceTrue(cond, ErrorType, message) / enforceOk(result, ErrorType) over an `if (!cond) throw` guard",
     },
     fixable: "code",
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: { enforceModule: ENFORCE_MODULE_SCHEMA },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       preferEnforce:
         "Prefer enforceTrue(cond, ErrorType, message) over an if-throw guard — it reads as a precondition and narrows the checked expression.",
@@ -117,12 +115,11 @@ export default {
   },
 
   create(context) {
-    // web-ui cannot import @re-cinq/lore-shared (it is not a workspace and
-    // mirrors types) — never rewrite guards there.
-    if (context.filename.replace(/\\/g, "/").includes(WEB_UI_MARKER)) return {};
+    const enforceModule = context.options[0]?.enforceModule;
+    if (!enforceModule) return {};
 
     const sourceCode = context.sourceCode;
-    const enforceSource = enforceSourceFor(context.filename);
+    const enforceSource = enforceSourceFor(context.filename, enforceModule);
     const importFixes = importInjector(sourceCode.ast, enforceSource, (value) =>
       value.endsWith("enforce.js"),
     );

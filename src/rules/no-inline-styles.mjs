@@ -1,26 +1,29 @@
 /**
- * No inline `style` props in the web UI — styling belongs in a stylesheet.
+ * No inline `style` props — styling belongs in a stylesheet.
  *
- * 175 of them had accumulated, and the same object recurs constantly
- * (`display:flex; align-items:center; gap:N` appears dozens of times), so there is
- * no single place to change a spacing decision.
+ * In the codebase this was extracted from, 175 of them had accumulated, and the
+ * same object recurred constantly (`display:flex; align-items:center; gap:N`
+ * appeared dozens of times), so there was no single place to change a spacing
+ * decision.
  *
  * Reported at `warn`: a rule that red-lights every PR on day one gets disabled
  * rather than obeyed. Verticals convert one at a time.
  *
+ * The rule has no path gate of its own: it runs on whatever files the consumer's
+ * `files:` glob scopes it to. Genuinely dynamic renderers (SVG transforms,
+ * measured heights) turn the rule off by path in the consumer's eslint config,
+ * where the exemption is visible and reviewable, rather than by silent tolerance
+ * here.
+ *
  * A computed `style={obj}` is reported too — the styling decision is still sitting
- * in the component. Genuinely dynamic renderers (SVG transforms, measured heights)
- * turn the rule off by path in eslint.config.mjs, where the exemption is visible
- * and reviewable, rather than by silent tolerance here.
+ * in the component.
  *
  * The one shape that passes is an object of nothing but CSS custom properties —
- * `style={{ "--pill-color": SPEC_STATUS_COLOR[status] }}`. That is not a styling
+ * `style={{ "--pill-color": STATUS_COLOR[status] }}`. That is not a styling
  * decision in the component: the rules still live in the stylesheet (`.status-pill`
  * reads `var(--pill-color)`), and the component only hands it a value from a palette
- * shared with the canvas renderers, which cannot use classes at all.
+ * shared with, say, canvas renderers, which cannot use classes at all.
  */
-
-const WEBUI_MARKER = "/apps/web-ui/src/";
 
 /** `"--x"`, `` `--x` ``, and the `["--x" as string]` cast the TS types force. */
 function customPropertyName(node) {
@@ -69,17 +72,11 @@ export default {
     schema: [],
     messages: {
       inlineStyle:
-        "Inline style on <{{element}}>. Move it to the colocated *.module.scss — an inline object cannot be shared, so the same rule ends up copied.",
+        "Inline style on <{{element}}>. Move it to a colocated stylesheet — an inline object cannot be shared, so the same rule ends up copied.",
     },
   },
 
   create(context) {
-    const filename = (context.filename ?? "").split("\\").join("/");
-
-    if (!filename.includes(WEBUI_MARKER)) {
-      return {};
-    }
-
     return {
       JSXAttribute(node) {
         if (node.name?.type !== "JSXIdentifier" || node.name.name !== "style") {

@@ -3,11 +3,24 @@ import rule from "./prefer-enforce-true.mjs";
 
 const ruleTester = new RuleTester();
 
-const IMPORT = `import { enforceTrue } from "@re-cinq/lore-shared/lib/enforce.js";`;
-const IMPORT_OK = `import { enforceOk } from "@re-cinq/lore-shared/lib/enforce.js";`;
+const SPECIFIER = "@re-cinq/lore-shared/lib/enforce.js";
+const OPTS = [
+  { enforceModule: { specifier: SPECIFIER, sourceDir: "libs/shared/src" } },
+];
+const IMPORT = `import { enforceTrue } from "${SPECIFIER}";`;
+const IMPORT_OK = `import { enforceOk } from "${SPECIFIER}";`;
+
+/** Every case runs with the enforce module configured unless it says otherwise. */
+const withOptions = (testCase) =>
+  typeof testCase === "string"
+    ? { code: testCase, options: OPTS }
+    : { options: OPTS, ...testCase };
 
 ruleTester.run("prefer-enforce-true", rule, {
   valid: [
+    // option absent: the fix could not name the helper, so nothing is reported
+    { code: `if (!x) throw new Error("z");`, options: [] },
+    { code: `enforceTrue(pool, "no pool");`, options: [{}] },
     // already using the canonical 3-arg form
     `${IMPORT}\nenforceTrue(pool, Error, "no pool");`,
     `enforceTrue(token, Boom.unauthorized, "no token");`,
@@ -36,18 +49,13 @@ ruleTester.run("prefer-enforce-true", rule, {
     // message derived from the narrowed object, not exactly `.error`
     "if (!res.ok) throw new Error(`bad: ${res.error}`);",
     `if (!res.ok) throw new Error(res.statusText);`,
-    // web-ui cannot import @re-cinq/lore-shared — never rewrite guards there
-    {
-      code: `if (!x) throw new Error("z");`,
-      filename: "/repo/apps/web-ui/src/lib/github.ts",
-    },
     // positive truthy guard reading the narrowed variable
     `if (refusal) throw new Error(refusal);`,
     `if (state.labelError) throw state.labelError;`,
     // instanceof narrows the left operand; this.x is a narrowable root
     `if (this.listResult instanceof Error) throw this.listResult;`,
     `if (!(result instanceof Error)) throw new Error(result.message);`,
-  ],
+  ].map(withOptions),
   invalid: [
     {
       // negation guard -> positive condition + decomposed message, import injected
@@ -116,11 +124,26 @@ ruleTester.run("prefer-enforce-true", rule, {
       errors: [{ messageId: "preferEnforce" }],
     },
     {
-      // inside the shared package, import enforceTrue by RELATIVE path (a
+      // inside `sourceDir`, import enforceTrue by RELATIVE path (a
       // self-package import resolves to unbuilt dist)
       code: `if (!x) throw new Error("z");`,
       filename: "/repo/libs/shared/src/project/lib/trust.ts",
       output: `import { enforceTrue } from "../../lib/enforce.js";\nenforceTrue(x, Error, "z");`,
+      errors: [{ messageId: "preferEnforce" }],
+    },
+    {
+      // without `sourceDir`, even the owning package imports the specifier
+      code: `if (!x) throw new Error("z");`,
+      filename: "/repo/libs/shared/src/project/lib/trust.ts",
+      options: [{ enforceModule: { specifier: SPECIFIER } }],
+      output: `${IMPORT}\nenforceTrue(x, Error, "z");`,
+      errors: [{ messageId: "preferEnforce" }],
+    },
+    {
+      // a different specifier is what the fix imports from
+      code: `if (!x) throw new Error("z");`,
+      options: [{ enforceModule: { specifier: "#lib/enforce.js" } }],
+      output: `import { enforceTrue } from "#lib/enforce.js";\nenforceTrue(x, Error, "z");`,
       errors: [{ messageId: "preferEnforce" }],
     },
     {
@@ -197,5 +220,5 @@ ruleTester.run("prefer-enforce-true", rule, {
       output: null,
       errors: [{ messageId: "legacySignature" }],
     },
-  ],
+  ].map(withOptions),
 });

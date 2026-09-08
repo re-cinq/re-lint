@@ -9,10 +9,9 @@ const ruleTester = new RuleTester({
   },
 });
 
-const VIEW = "/repo/apps/web-ui/src/components/StatusBadge.tsx";
-const PAGE = "/repo/apps/web-ui/src/app/repos/[owner]/[repo]/features/page.tsx";
-const ROUTE = "/repo/apps/web-ui/src/app/api/repos/[owner]/[repo]/route.ts";
-const OUTSIDE = "/repo/apps/floor/src/jobs/merge/merge-check.ts";
+const VIEW = "/repo/src/components/StatusBadge.tsx";
+const PAGE = "/repo/src/app/repos/[owner]/[repo]/features/page.tsx";
+const ROUTE = "/repo/src/app/api/repos/[owner]/[repo]/route.ts";
 
 ruleTester.run("default-export-matches-filename", rule, {
   valid: [
@@ -28,12 +27,15 @@ ruleTester.run("default-export-matches-filename", rule, {
     },
     // route.ts has named handlers and no default export — nothing to enforce
     { code: `export async function GET() { return null; }`, filename: ROUTE },
-    // outside web-ui the rule does not apply
-    { code: `export default function whateverName() {}`, filename: OUTSIDE },
+    // a declaration file is not a component module
+    {
+      code: `export default function nope() {}`,
+      filename: "/repo/src/types/global.d.ts",
+    },
     // a test file is not a component module
     {
       code: `export default function nope() {}`,
-      filename: "/repo/apps/web-ui/src/components/StatusBadge.test.tsx",
+      filename: "/repo/src/components/StatusBadge.test.tsx",
     },
     // no default export at all
     { code: `export const helper = 1;`, filename: VIEW },
@@ -49,6 +51,19 @@ ruleTester.run("default-export-matches-filename", rule, {
       code: `export default function Badge() { return null; }`,
       filename: VIEW,
       errors: [{ messageId: "nameMismatch" }],
+    },
+    {
+      // no path gate: any file the consumer scopes the rule to is checked
+      code: `export default function whateverName() {}`,
+      filename: "/repo/packages/jobs/src/merge/merge-check.ts",
+      errors: [{ messageId: "nameMismatch" }],
+    },
+    {
+      // `reserved: "error"` is the explicit default
+      code: `export default function RepoFeatures() { return null; }`,
+      filename: PAGE,
+      options: [{ reserved: "error" }],
+      errors: [{ messageId: "reservedInlineDefault" }],
     },
     {
       // an anonymous default cannot be found by any name

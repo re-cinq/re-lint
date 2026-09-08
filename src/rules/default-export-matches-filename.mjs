@@ -1,10 +1,16 @@
 /**
  * A default export must be findable by its own name.
  *
- * `export default async function NewFeature` lived in `new/page.tsx`: grepping
- * `NewFeature` found nothing, because every page file in the app is called
- * `page.tsx`. So a non-reserved file's default export is named after its file, and
- * a reserved Next filename re-exports one that is.
+ * Meant for Next.js app directories. `export default async function NewFeature`
+ * lived in `new/page.tsx`: grepping `NewFeature` found nothing, because every
+ * page file in the app is called `page.tsx`. So a non-reserved file's default
+ * export is named after its file, and a reserved Next filename re-exports one
+ * that is.
+ *
+ * No path gate of its own: the consumer scopes it to its app source with a
+ * `files:` glob. Test files and `.d.ts` declarations are skipped since neither
+ * is a component module. Option `reserved: "off"` silences the reserved-file
+ * checks during a staged migration.
  *
  * Route-segment config (`dynamic`, `revalidate`, `metadata`, …) is allowed to stay
  * in the reserved file: it MUST be declared literally there, since a re-exported
@@ -12,8 +18,6 @@
  *
  * Detect-only. A rename is a file move, not a codemod.
  */
-
-const WEBUI_MARKER = "/apps/web-ui/src/";
 
 /** Route files that render a COMPONENT. Their name is fixed by the framework, so
  *  the component must live in a file named after itself and be re-exported here. */
@@ -141,7 +145,13 @@ export default {
     schema: [
       {
         type: "object",
-        properties: { reserved: { enum: ["error", "off"] } },
+        properties: {
+          reserved: {
+            description:
+              "Whether Next.js reserved route files (page, layout, ...) must be pure re-exports",
+            enum: ["error", "off"],
+          },
+        },
         additionalProperties: false,
       },
     ],
@@ -160,11 +170,7 @@ export default {
   create(context) {
     const filename = (context.filename ?? "").split("\\").join("/");
 
-    if (
-      !filename.includes(WEBUI_MARKER) ||
-      filename.includes(".test.") ||
-      filename.endsWith(".d.ts")
-    ) {
+    if (filename.includes(".test.") || filename.endsWith(".d.ts")) {
       return {};
     }
     const base = filename.slice(filename.lastIndexOf("/") + 1);

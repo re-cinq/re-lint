@@ -8,6 +8,8 @@
  * subtle answer (see `narrowedRoots`) that must not be re-derived per rule.
  */
 
+import path from "node:path";
+
 const FLIPPED_OPERATOR = {
   "===": "!==",
   "!==": "===",
@@ -181,4 +183,44 @@ export function importInjector(program, source, matches) {
         : fixer.insertTextBeforeRange([0, 0], `${importLine}\n`),
     ];
   };
+}
+
+/**
+ * Where a helper lives RELATIVE to the file being fixed, when that file sits
+ * inside `rootSegment` (a path fragment such as `libs/shared/src`): the fix
+ * imports `<root>/<target>` by relative path. Null when the file is outside.
+ */
+export function relativeHelperPath(filename, rootSegment, target) {
+  const unix = filename.replace(/\\/g, "/");
+  const marker = `/${rootSegment.replace(/^\/+|\/+$/g, "")}/`;
+  const idx = unix.indexOf(marker);
+  if (idx === -1) return null;
+  const srcRoot = unix.slice(0, idx + marker.length);
+  const rel = path
+    .relative(path.dirname(unix), `${srcRoot}${target}`)
+    .replace(/\\/g, "/");
+  return rel.startsWith(".") ? rel : `./${rel}`;
+}
+
+export const ENFORCE_MODULE_SCHEMA = {
+  type: "object",
+  properties: {
+    specifier: { type: "string" },
+    sourceDir: { type: "string" },
+  },
+  required: ["specifier"],
+  additionalProperties: false,
+};
+
+/**
+ * Where the enforce helpers are imported from for one file, given the
+ * `enforceModule` option: by relative path inside `sourceDir` (the package
+ * that owns the helper, where a self-package import resolves to unbuilt dist),
+ * the package `specifier` everywhere else.
+ */
+export function enforceSourceFor(filename, enforceModule) {
+  const relative = enforceModule.sourceDir
+    ? relativeHelperPath(filename, enforceModule.sourceDir, "lib/enforce.js")
+    : null;
+  return relative ?? enforceModule.specifier;
 }

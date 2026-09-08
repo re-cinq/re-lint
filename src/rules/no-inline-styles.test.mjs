@@ -9,8 +9,7 @@ const ruleTester = new RuleTester({
   },
 });
 
-const VIEW = "/repo/apps/web-ui/src/components/StatusBadge.tsx";
-const OUTSIDE = "/repo/apps/vscode-extension/src/Panel.tsx";
+const VIEW = "/repo/src/components/StatusBadge.tsx";
 
 ruleTester.run("no-inline-styles", rule, {
   valid: [
@@ -20,8 +19,6 @@ ruleTester.run("no-inline-styles", rule, {
       code: `import s from "./x.module.scss"; const A = () => <div className={s.card} />;`,
       filename: VIEW,
     },
-    // outside web-ui the rule does not apply
-    { code: `const A = () => <div style={{ margin: 0 }} />;`, filename: OUTSIDE },
     // a non-style attribute that happens to hold an object
     { code: `const A = () => <div data-x={{ a: 1 }} />;`, filename: VIEW },
     // handing the stylesheet a value is not styling in the component
@@ -44,6 +41,12 @@ ruleTester.run("no-inline-styles", rule, {
     {
       code: `const A = () => <div style={{ margin: 0 }} />;`,
       filename: VIEW,
+      errors: [{ messageId: "inlineStyle" }],
+    },
+    {
+      // no path gate: any file the consumer scopes the rule to is checked
+      code: `const A = () => <div style={{ margin: 0 }} />;`,
+      filename: "/repo/packages/extension/src/Panel.tsx",
       errors: [{ messageId: "inlineStyle" }],
     },
     {
