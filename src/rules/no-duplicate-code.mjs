@@ -20,6 +20,12 @@ import { statSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { resolveJscpdBin, runJscpd } from "./lib/jscpd/runner.mjs";
 
+/** Below this much real code, a match is a shared dependency list with spillover, not duplicated logic. */
+const MIN_CODE_LINES = 3;
+
+const IMPORT_LINE = /^(import|export)\b[^;]*(from\s|["'])/;
+const CONTINUATION_LINE = /^[\w$*{},\s]*(\}\s*from\s|["']|,)?[;,]?$/;
+
 const scans = new Map();
 const reportedUnavailable = new Set();
 
@@ -81,6 +87,53 @@ function reportUnavailable(context, key, error) {
   });
 }
 
+/** A line that carries no logic of its own: blank, a comment, or part of an import or export-from statement. */
+function isDeclarationLine(line, inBlockComment) {
+  const text = line.trim();
+  if (inBlockComment) {
+    return { declaration: true, inBlockComment: !text.includes("*/") };
+  }
+  if (text.startsWith("/*")) {
+    return { declaration: true, inBlockComment: !text.includes("*/") };
+  }
+
+  return { declaration: carriesNoLogic(text), inBlockComment: false };
+}
+
+function carriesNoLogic(text) {
+  const isComment = text.startsWith("//") || text.startsWith("*");
+
+  return (
+    text === "" ||
+    isComment ||
+    IMPORT_LINE.test(text) ||
+    CONTINUATION_LINE.test(text)
+  );
+}
+
+/**
+ * True when the clone carries almost no logic of its own: two modules
+ * importing the same things is what sharing a library looks like, and the
+ * only way to stop jscpd matching it is a barrel that hides where each
+ * symbol comes from, which is a worse file to read. A match runs on past the
+ * last import into whatever follows, so a couple of trailing lines are the
+ * spillover rather than the duplication.
+ */
+function isDependencyList(sourceCode, clone) {
+  const lines = sourceCode.lines.slice(clone.start.line - 1, clone.end.line);
+  let inBlockComment = false;
+  let codeLines = 0;
+
+  for (const line of lines) {
+    const verdict = isDeclarationLine(line, inBlockComment);
+
+    inBlockComment = verdict.inBlockComment;
+    codeLines += verdict.declaration ? 0 : 1;
+  }
+
+  return codeLines < MIN_CODE_LINES;
+}
+
 function reportClone(context, cwd, clone) {
   context.report({
     loc: { start: clone.start, end: clone.end },
@@ -137,8 +190,12 @@ export default {
           return;
         }
 
+        const { sourceCode } = context;
+
         for (const clone of entry.byFile.get(filename) ?? []) {
-          reportClone(context, cwd, clone);
+          if (!isDependencyList(sourceCode, clone)) {
+            reportClone(context, cwd, clone);
+          }
         }
       },
     };

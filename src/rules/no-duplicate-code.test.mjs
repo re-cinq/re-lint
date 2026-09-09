@@ -28,11 +28,12 @@ const realBin = join(repoRoot, "node_modules", "jscpd", "run-jscpd.js");
 // node_modules above it, so the walk-up bin resolution is what finds jscpd;
 // a copy under the OS tmpdir has nothing above it and needs `jscpdBin`.
 const cacheRoot = join(repoRoot, "node_modules", ".cache");
+const importOnlyDir = join(repoRoot, "test-fixtures", "import-only-clone");
 
-function copyFixture(parent) {
+function copyFixture(parent, from = fixtureDir) {
   mkdirSync(parent, { recursive: true });
   const dir = mkdtempSync(join(parent, "no-duplicate-code-"));
-  cpSync(fixtureDir, dir, { recursive: true });
+  cpSync(from, dir, { recursive: true });
   return dir;
 }
 
@@ -187,4 +188,14 @@ test("rewriting b.ts without the clone after a scan in the same process yields z
   const after = await lint(cwd, options);
   assert.deepEqual(summarize(after), { "a.ts": [], "b.ts": [], "c.ts": [] });
   rmSync(cwd, { recursive: true, force: true });
+});
+
+test("two files sharing only a sixteen-line import list report nothing", async () => {
+  const cwd = copyFixture(cacheRoot, importOnlyDir);
+  const results = await lint(cwd, { minTokens: 30, roots: ["."] });
+
+  assert.deepEqual(
+    results.flatMap((result) => result.messages),
+    [],
+  );
 });
