@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0
+
+- `no-duplicate-code` no longer reports a match that is a module's shared
+  dependency list. Two files importing the same things is what using a library
+  looks like, and the only way to stop jscpd matching it is a barrel that hides
+  where each symbol comes from. A match carrying fewer than three lines of real
+  code is treated as imports plus the spillover past the last one.
+
 ## 1.0.1
 
 - `no-flag-params` no longer reports a boolean passed to an assertion matcher. `expect(ok).toBe(true)` states what the value is; the boolean is the assertion, not a switch the callee reads. Matchers reached through `.not`, `.resolves` and `.rejects` are covered too.
