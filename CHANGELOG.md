@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0
+
+- `no-flag-params` treats a mock stub's value the same way it treats a state
+  setter's: `mockResolvedValue(true)` and its siblings seed the answer a stub
+  will give, rather than selecting a behaviour the callee branches on. The mock
+  library owns the stub, so there is no second function to split into.
+
 ## 1.2.0
 
 - `no-flag-params` no longer reports a boolean the callee stores rather than

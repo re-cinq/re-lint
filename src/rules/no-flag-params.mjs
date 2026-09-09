@@ -130,6 +130,14 @@ function flagParamReport(node, name) {
  * hanging off an `expect(...)` chain, including through `.not` and `.resolves`.
  */
 const INITIAL_VALUE_HOOKS = new Set(["useState", "useRef"]);
+const STUB_METHODS = new Set([
+  "mockReturnValue",
+  "mockReturnValueOnce",
+  "mockResolvedValue",
+  "mockResolvedValueOnce",
+  "mockRejectedValue",
+  "mockRejectedValueOnce",
+]);
 const SETTER_NAME = /^set[A-Z]/;
 
 function isExpectCall(node) {
@@ -171,7 +179,7 @@ function isValueAssignment(node) {
     return false;
   }
 
-  if (INITIAL_VALUE_HOOKS.has(name)) {
+  if (INITIAL_VALUE_HOOKS.has(name) || STUB_METHODS.has(name)) {
     return true;
   }
 
