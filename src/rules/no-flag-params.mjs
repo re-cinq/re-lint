@@ -129,12 +129,53 @@ function flagParamReport(node, name) {
  * assertion, not a switch the callee reads. The same goes for every matcher
  * hanging off an `expect(...)` chain, including through `.not` and `.resolves`.
  */
+const INITIAL_VALUE_HOOKS = new Set(["useState", "useRef"]);
+const SETTER_NAME = /^set[A-Z]/;
+
 function isExpectCall(node) {
   return (
     node.type === "CallExpression" &&
     node.callee?.type === "Identifier" &&
     node.callee.name === "expect"
   );
+}
+
+/** The property name of `obj.f()`. */
+function memberName(callee) {
+  const { property } = callee;
+
+  return property.type === "Identifier" ? property.name : null;
+}
+
+/** The name a call is made through, whether `f()` or `obj.f()`. */
+function calleeName(node) {
+  const { callee } = node;
+
+  if (callee.type === "Identifier") {
+    return callee.name;
+  }
+
+  return callee.type === "MemberExpression" ? memberName(callee) : null;
+}
+
+/**
+ * True when the call stores the boolean rather than branching on it. A flag
+ * argument is one the callee switches behaviour on; `useState(false)` seeds a
+ * value, and a one-argument `setX(false)` assigns it. Splitting either into
+ * two functions is not open to the caller — React hands back the setter — and
+ * naming the argument would say no more than the setter already does.
+ */
+function isValueAssignment(node) {
+  const name = calleeName(node);
+  if (!name) {
+    return false;
+  }
+
+  if (INITIAL_VALUE_HOOKS.has(name)) {
+    return true;
+  }
+
+  return SETTER_NAME.test(name) && node.arguments.length === 1;
 }
 
 function chainStep(node) {
@@ -232,7 +273,7 @@ export default {
     }
 
     function checkCall(node) {
-      if (isAssertionCall(node)) {
+      if (isAssertionCall(node) || isValueAssignment(node)) {
         return;
       }
 

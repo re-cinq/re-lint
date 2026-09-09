@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+
+- `no-flag-params` no longer reports a boolean the callee stores rather than
+  branches on: `useState(false)` and `useRef(true)` seed a value, and a
+  one-argument `setX(false)` assigns one. Splitting those is not open to the
+  caller, since React hands back the setter. A setter taking more than the
+  value, such as `setPaused(id, true)`, is still a flag argument.
+
 ## 1.1.0
 
 - `no-duplicate-code` no longer reports a match that is a module's shared

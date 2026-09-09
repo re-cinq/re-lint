@@ -31,6 +31,12 @@ ruleTester.run("no-flag-params", rule, {
       code: `function save({ force }: { force: boolean }) { return force; }`,
       options: [{ allowNamed: true }],
     },
+    // a stored value, not a behaviour switch: React hands back the setter, so
+    // there is no second function for the caller to reach for
+    `const [open, setOpen] = useState(false);`,
+    `const seen = useRef(true);`,
+    `setSidebarOpen(false);`,
+    `drawer.setSidebarOpen(true);`,
   ],
   invalid: [
     {
@@ -87,6 +93,11 @@ ruleTester.run("no-flag-params", rule, {
     {
       code: `save({ force: true, name: "x" });`,
       options: [{ allowNamed: false }],
+      errors: [{ messageId: "flagArgument" }],
+    },
+    // a setter taking more than the value IS selecting a behaviour
+    {
+      code: `setPaused(agent.id, true);`,
       errors: [{ messageId: "flagArgument" }],
     },
   ],
