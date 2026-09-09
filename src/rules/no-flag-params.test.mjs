@@ -36,6 +36,9 @@ ruleTester.run("no-flag-params", rule, {
     `const [open, setOpen] = useState(false);`,
     `const seen = useRef(true);`,
     `setSidebarOpen(false);`,
+    `userCanAccessRepo.mockResolvedValue(true);`,
+    `vi.mocked(isDbAvailable).mockReturnValue(false);`,
+    `fetchSpy.mockResolvedValueOnce(true);`,
     `drawer.setSidebarOpen(true);`,
   ],
   invalid: [
