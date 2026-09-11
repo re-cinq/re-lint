@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0
+
+- New opt-in `prefer-design-tokens` rule for stylesheets, run under
+  `language: "css/css"` from `@eslint/css` (now an optional peer). A raw color,
+  spacing, font size, font weight, line height, radius, shadow, z-index or font
+  family in a governed property is reported, so the value comes from a
+  `var(--…)` token instead. The groups follow Bootstrap's variable scales.
+  Custom property definitions, `var()` with its fallback, `0`, keywords and
+  percentages pass; `groups` narrows the check and `allow` exempts exact values.
+
 ## 1.3.0
 
 - `no-flag-params` treats a mock stub's value the same way it treats a state

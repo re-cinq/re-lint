@@ -22,6 +22,7 @@ Optional peers, needed only by the rules that use them:
 | -------------------------- | --------------------------------------------------------------------------------------------------- |
 | `@stylistic/eslint-plugin` | the `recommended` preset's blank-line rules (pass it in; omitted otherwise)                         |
 | `@eslint/markdown`         | the four markdown rules (`require-*`, `no-dead-md-links`), which run under `language: markdown/gfm` |
+| `@eslint/css`              | `prefer-design-tokens`, which runs on stylesheets under `language: css/css`                         |
 | `typescript`               | `no-forwarding-class` (type-aware; needs `parserOptions.projectService`)                            |
 | `jscpd` (5.x)              | `no-duplicate-code`                                                                                 |
 
@@ -278,6 +279,56 @@ export default [
     plugins: { "re-lint": reLint },
     rules: {
       "re-lint/require-spec-link": ["error", { roots: ["specs", "adrs"] }],
+    },
+  },
+];
+```
+
+### Styles (CSS)
+
+These run on stylesheets under `language: "css/css"` from `@eslint/css`. With
+`languageOptions.tolerant` they read SCSS nesting too; a value the parser keeps
+as raw text, such as `$gap`, is skipped.
+
+| Rule                   | Reports                                                                  | Options           |
+| ---------------------- | ------------------------------------------------------------------------ | ----------------- |
+| `prefer-design-tokens` | a raw value in a governed property, where a `var(--…)` design token fits | `groups`, `allow` |
+
+Each governed property belongs to one group, modelled on Bootstrap's variable
+scales. A value is raw when it is the literal kind the group's scale exists to
+replace:
+
+| Group         | Properties                                                                            | Raw value                                                  | Bootstrap scale    |
+| ------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------ |
+| `color`       | `color`, `background`, `border*`, `outline*`, `fill`, `stroke`, `text-decoration*`, … | hex, named color, `rgb()`/`hsl()`/… with no `var()` inside | theme colors       |
+| `spacing`     | `margin*`, `padding*`, `gap`, `row-gap`, `column-gap`                                 | a non-zero length                                          | `$spacers`         |
+| `font-size`   | `font-size`                                                                           | a non-zero length                                          | `$font-sizes`      |
+| `font-weight` | `font-weight`                                                                         | a number                                                   | `$font-weight-*`   |
+| `line-height` | `line-height`                                                                         | a number or length                                         | `$line-height-*`   |
+| `radius`      | `border-radius`, `border-*-radius`                                                    | a non-zero length                                          | `$border-radius-*` |
+| `shadow`      | `box-shadow`, `text-shadow`                                                           | a length or a color                                        | `$box-shadow-*`    |
+| `z-index`     | `z-index`                                                                             | a non-zero number                                          | `$zindex-*`        |
+| `font-family` | `font-family`                                                                         | a font name                                                | `$font-family-*`   |
+
+What passes: custom property definitions (the token file is where raw values
+live), anything inside `var()` including its fallback, `0`, keywords (`auto`,
+`inherit`, `transparent`, `currentColor`, `bold`), percentages, a color function
+built from tokens, and the family an `@font-face` block defines. `groups` limits
+the check to the named groups; `allow` exempts exact values, such as a `1px`
+hairline.
+
+```js
+import css from "@eslint/css";
+import reLint from "@re-cinq/eslint-plugin-re-lint";
+
+export default [
+  {
+    files: ["**/*.{css,scss}"],
+    plugins: { css, "re-lint": reLint },
+    language: "css/css",
+    languageOptions: { tolerant: true },
+    rules: {
+      "re-lint/prefer-design-tokens": ["warn", { allow: ["1px"] }],
     },
   },
 ];
