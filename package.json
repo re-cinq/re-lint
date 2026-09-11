@@ -1,6 +1,6 @@
 {
   "name": "@re-cinq/eslint-plugin-re-lint",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "re:cinq house ESLint rules: complexity, naming, functions, comments, tests, layering, spec traceability, and jscpd-backed duplicate detection. Flat config, plugin key re-lint.",
   "license": "Apache-2.0",
   "repository": {
@@ -38,6 +38,7 @@
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json",
+    "prepack": "npm run build",
     "test": "npm run build && node --test src/index.test.mjs src/readme.test.mjs src/rules/*.test.mjs src/rules/lib/*.test.mjs src/rules/lib/jscpd/*.test.mjs",
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.{ts,mjs}\" \"test-fixtures/**/*.{ts,mjs}\" README.md",

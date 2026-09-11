@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.1
+
+- 1.4.0 reached npm without `prefer-design-tokens`: the tarball was packed from
+  a `dist/` built before the rule existed, because nothing rebuilt it on publish.
+  A `prepack` script now runs the build, so `npm pack` and `npm publish` always
+  ship `dist/` compiled from the tagged source.
+
 ## 1.4.0
 
 - New opt-in `prefer-design-tokens` rule for stylesheets, run under

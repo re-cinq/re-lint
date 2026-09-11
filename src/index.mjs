@@ -40,7 +40,7 @@ import requireStatusMatchesCoverage from "./rules/require-status-matches-coverag
 import testImportsItsSubject from "./rules/test-imports-its-subject.mjs";
 
 const NAME = "@re-cinq/eslint-plugin-re-lint";
-const VERSION = "1.4.0";
+const VERSION = "1.4.1";
 
 const rules = {
   "callee-below-caller": calleeBelowCaller,
