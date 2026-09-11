@@ -27,6 +27,7 @@ import noRowTypesOutsideModels from "./rules/no-row-types-outside-models.mjs";
 import noSqlInWebUi from "./rules/no-sql-in-web-ui.mjs";
 import noVagueNames from "./rules/no-vague-names.mjs";
 import preferApiError from "./rules/prefer-api-error.mjs";
+import preferDesignTokens from "./rules/prefer-design-tokens.mjs";
 import preferEarlyReturn from "./rules/prefer-early-return.mjs";
 import preferEnforceTrue from "./rules/prefer-enforce-true.mjs";
 import preferPolymorphism from "./rules/prefer-polymorphism.mjs";
@@ -39,7 +40,7 @@ import requireStatusMatchesCoverage from "./rules/require-status-matches-coverag
 import testImportsItsSubject from "./rules/test-imports-its-subject.mjs";
 
 const NAME = "@re-cinq/eslint-plugin-re-lint";
-const VERSION = "1.3.0";
+const VERSION = "1.4.0";
 
 const rules = {
   "callee-below-caller": calleeBelowCaller,
@@ -71,6 +72,7 @@ const rules = {
   "no-sql-in-web-ui": noSqlInWebUi,
   "no-vague-names": noVagueNames,
   "prefer-api-error": preferApiError,
+  "prefer-design-tokens": preferDesignTokens,
   "prefer-early-return": preferEarlyReturn,
   "prefer-enforce-true": preferEnforceTrue,
   "prefer-polymorphism": preferPolymorphism,
@@ -105,6 +107,7 @@ export const OPT_IN_RULES = [
   "no-prop-mutation",
   "no-sql-in-web-ui",
   "default-export-matches-filename",
+  "prefer-design-tokens",
 ];
 
 const TEST_ONLY_RULES = ["max-expects", "no-nondeterministic-tests"];

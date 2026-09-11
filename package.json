@@ -1,6 +1,6 @@
 {
   "name": "@re-cinq/eslint-plugin-re-lint",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "re:cinq house ESLint rules: complexity, naming, functions, comments, tests, layering, spec traceability, and jscpd-backed duplicate detection. Flat config, plugin key re-lint.",
   "license": "Apache-2.0",
   "repository": {
@@ -44,12 +44,16 @@
     "format:check": "prettier --check \"src/**/*.{ts,mjs}\" README.md"
   },
   "peerDependencies": {
+    "@eslint/css": ">=2.0.0",
     "@eslint/markdown": ">=7.0.0",
     "eslint": ">=9.0.0",
     "jscpd": ">=5.0.0",
     "typescript": ">=5.4.0"
   },
   "peerDependenciesMeta": {
+    "@eslint/css": {
+      "optional": true
+    },
     "@eslint/markdown": {
       "optional": true
     },
@@ -64,6 +68,7 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@eslint/css": "^2.0.0",
     "@eslint/js": "^10.0.1",
     "@eslint/markdown": "^8.0.3",
     "@stylistic/eslint-plugin": "^5.10.0",
