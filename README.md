@@ -386,6 +386,63 @@ export default [
 ];
 ```
 
+## Re-anchoring spec links: `re-lint-reanchor`
+
+A `#L42` link in a spec drifts the moment its cited file gains or loses a line
+above it. The `re-lint-reanchor` command heals those links from git, with no
+content search:
+
+```sh
+npx re-lint-reanchor            # rewrite drifted links against origin/main
+npx re-lint-reanchor --check    # CI: rewrite nothing, exit 1 on any finding
+npx re-lint-reanchor --all develop
+```
+
+- A link labelled `[validated by <test title>]` into a test file moves to the
+  line of the one `it()`/`test()` carrying that title. An anchor inside the
+  test's body is kept while, mapped through the diff, it still lies in that
+  test. A title two tests carry is reported; a title in backticks is unwrapped.
+- Every other `[label](../path#Lnn)` link is paired with its copy in the merge
+  base's version of the markdown and mapped through the cited file's
+  `git diff -U0` hunks since `git merge-base <base-ref> HEAD` (plus
+  `MERGE_HEAD` during an uncommitted merge). Reading the merge-base copy makes
+  a second run a no-op. A link the branch added, or whose href it edited by
+  hand, is kept as authored.
+- A cited line the branch deleted or rewrote is reported for a manual fix. An
+  anchor on a blank or closing-punctuation line, past the end of its file, or
+  into a missing file is reported as rotten. A bare `[L42]` label is synced to
+  its href's line.
+
+Only links into files the branch changed are touched, so a pull request
+carries no unrelated spec churn; `--all` sweeps every link. `base-ref`
+defaults to `origin/main`. The corpus defaults to `specs/**/spec.md`,
+`.specify/spec.md` and `adrs/*.md`; each `--corpus <glob>` replaces it
+(`**`, `*` and `?` are supported). Exit codes: 0 clean, 1 on an unmapped or
+rotten link (or, with `--check`, a stale or mislabelled one), 2 on a bad flag
+or a base ref that does not resolve.
+
+The logic is a pure module, so another tool can drive it with its own git
+access:
+
+```js
+import {
+  createReanchorer,
+  formatReanchorReport,
+  parseHunks,
+} from "@re-cinq/eslint-plugin-re-lint/spec/spec-reanchor.js";
+
+const reanchor = createReanchorer(
+  { workingFile, hunks: (path) => parseHunks(diffOf(path)), isChanged },
+  { check: true, all: false },
+);
+const { text, tally } = reanchor({ docPath, source, baseSource });
+```
+
+It also exports the building blocks: `anchorLinksIn`, `pairWithBase`,
+`findTestDeclarations`, `normalizeTitle`, `titleOfLabel`, `mapLine`,
+`rottenReason`, `syncedLabel`, `selectCorpus`, `globToRegExp` and
+`DEFAULT_CORPUS`.
+
 ## Adopting in an existing repository
 
 Switching everything to `error` on a codebase that predates the rules blocks

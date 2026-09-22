@@ -11,6 +11,6 @@
     "outDir": "dist",
     "skipLibCheck": true
   },
-  "include": ["src/index.mjs", "src/vendor/**/*.ts"],
+  "include": ["src/index.mjs", "src/cli/*.mjs", "src/vendor/**/*.ts"],
   "exclude": ["**/*.test.mjs"]
 }
