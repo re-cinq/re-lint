@@ -144,11 +144,21 @@ function fail(message) {
   process.exitCode = 2;
 }
 
-function main(argv, root) {
+// `git ls-files` lists only what sits below the directory git runs in, so the corpus is listed from the work tree's root rather than wherever the caller stands.
+function workTreeRoot(cwd) {
+  return git(cwd, ["rev-parse", "--show-toplevel"])?.trim() || null;
+}
+
+function main(argv, cwd) {
   const options = parseCli(argv);
 
   if (options === null) {
     return fail(USAGE);
+  }
+  const root = workTreeRoot(cwd);
+
+  if (root === null) {
+    return fail(`not inside a git work tree: ${cwd}`);
   }
   const baseCommit = `${options.baseRef}^{commit}`;
 

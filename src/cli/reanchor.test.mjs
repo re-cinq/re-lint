@@ -560,6 +560,20 @@ describe("re-lint-reanchor", () => {
     assertUsageError(run(repo, "main", "feature"));
   });
 
+  it("re-anchors the whole corpus when git runs from a subdirectory of the work tree", () => {
+    const repo = repoWith(asSpec(link("validated by subtracts numbers", "5")));
+
+    prependIntro(repo);
+    const result = run(join(repo, "specs", "maths"), "main");
+
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /re-anchored: 1, up to date: 0/);
+    assert.equal(
+      read(repo, SPEC_PATH),
+      asSpec(link("validated by subtracts numbers", "7")),
+    );
+  });
+
   it("an unknown base ref exits 2 naming the ref", () => {
     const result = run(
       repoWith(asSpec(link("validated by", "6"))),
