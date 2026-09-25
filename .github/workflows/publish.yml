@@ -1,25 +1,92 @@
 name: Publish
 
-# On a v* tag, test + build the package and publish it to npm with provenance.
+# When a GitHub release is published, test + build the package at the
+# release's tag and stage it on npm with provenance.
 #
 # Auth is tokenless via npm Trusted Publishing (OIDC): no NPM_TOKEN secret. It
-# needs `id-token: write`, npm >= 11.5.1, and a trusted publisher registered for
-# @re-cinq/eslint-plugin-re-lint on npmjs.com pointing at this repo and this
-# workflow file. The first-ever publish is done once with a token before the
-# trusted publisher can be registered (ADR-045 in re-cinq/lore).
+# needs `id-token: write` (on the publish job below), npm >= 11.15.0 (upgraded
+# below), and a trusted publisher registered for @re-cinq/eslint-plugin-re-lint
+# on npmjs.com pointing at this repo and this workflow file.
+#
+# The GitHub Release is the release: a human drafts one with a `vX.Y.Z` tag
+# and publishes it, and that `published` event is the way in. The version is
+# taken FROM THE TAG - package.json carries a placeholder on main and is never
+# bumped by hand or by a bot - so a release is one act, not a pull request
+# plus a release. workflow_dispatch exists to re-run a failed publish on an
+# existing tag; on any other ref the tag check below fails, since a branch
+# name is not a release tag. Draft releases never fire `published`;
+# pre-releases are rejected by the job condition below, so a pre-release
+# cannot reach the registry.
+#
+# The publish job holds the OIDC credential, so the gates that run the test
+# suite live in the read-only `verify` job and the publish job only `needs:`
+# its green result.
 
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
 
+# One credentialled publish at a time, never cancelled mid-flight: a
+# half-staged version is registry state a human has to clean up. The group is
+# a constant on purpose - keyed by ref it would be one group per tag and
+# serialise nothing.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+# Least privilege by default: only the publish job opts into id-token: write.
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  publish:
+  # The cheap gate first: a malformed or prerelease tag - or a
+  # workflow_dispatch from a branch - fails here in seconds, before verify
+  # spends the suite on it.
+  release-tag:
+    if: ${{ !github.event.release.prerelease }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - name: Release tag names a stable version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: ./scripts/set-version-from-tag.sh --check "$RELEASE_TAG"
+
+  # The same gates CI runs on main, repeated at the tag: a release's tag can
+  # point at anything, and this is the last check before an immutable publish.
+  verify:
+    needs: release-tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm run lint
+      - run: npm run format:check
+      - name: Tarball holds dist, manifest, license and readme only
+        run: npm pack --dry-run
+
+  publish:
+    # Gate the credentialled job on the tag gate and the verify gate. If
+    # either is red, the id-token job never starts, so the token is never
+    # minted.
+    needs: [release-tag, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm OIDC trusted publishing
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -28,13 +95,43 @@ jobs:
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
-      - name: Upgrade npm for OIDC trusted publishing
-        run: npm install -g npm@^11.5.1
-      - name: Package version matches the release tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      # Trusted publishing needs npm >= 11.5.1; `npm stage` needs >= 11.15.0.
+      # Pinned exactly: this job holds the credential, so nothing it installs
+      # may resolve live. Bump the pin by hand.
+      - name: Upgrade npm for OIDC trusted publishing and staged publishing
+        run: npm install -g npm@11.19.1
+      # The tag names the version. A malformed or prerelease tag already failed
+      # release-tag; a tag that repeats a published version fails at the
+      # registry, loudly, which is the right place for it.
+      - name: Set the version from the release tag
         env:
-          TAG: ${{ github.ref_name }}
-        run: ./scripts/check-version.sh "$TAG"
-      - run: npm ci --ignore-scripts
-      - run: npm test
-      - run: npm publish --provenance --access public
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: ./scripts/set-version-from-tag.sh "$RELEASE_TAG"
+      - name: Install
+        run: npm ci --ignore-scripts
+      # prepack builds too, but an explicit build keeps dist/ from depending
+      # on whether `npm stage publish` runs lifecycle scripts: `files: ["dist"]`
+      # would otherwise ship an empty package silently.
+      - name: Build
+        run: npm run build
+      # Staged, not direct: the trusted publisher allows `npm stage publish`
+      # only, which is npm's own recommendation. The tarball, its dist-tag and
+      # its provenance all reach the registry, but the version is not
+      # installable until a maintainer approves the stage with 2FA - on
+      # npmjs.com (the package page's Versions tab -> Approve) or with
+      # `npm stage list` then `npm stage approve <id>`. Nothing this job can do
+      # makes a version installable on its own. pipefail: a failed stage must
+      # not be masked by the tee that feeds the job summary.
+      - name: Stage the version on npm
+        run: |
+          set -o pipefail
+          npm stage publish --access public --provenance 2>&1 | tee stage.log
+          {
+            echo "## Staged on npm - a maintainer must approve it before it is installable"
+            echo
+            echo "npmjs.com -> @re-cinq/eslint-plugin-re-lint -> Versions tab -> Approve (2FA), or: npm stage list, then npm stage approve <id>."
+            echo
+            echo '```'
+            cat stage.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
