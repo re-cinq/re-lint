@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.5.0
+
+- New `re-lint-reanchor` command heals the `#Lnn` links in spec markdown after
+  a branch edits a cited file. A `[validated by <test title>]` link into a test
+  file follows its `it()`/`test()` declaration. Every other link is paired with
+  its merge-base copy and mapped through the cited file's `git diff -U0` hunks.
+  A deleted or rewritten cited line, or an anchor on a blank line, past the end
+  of its file or into a missing file, is reported. `[Lnnn]` labels follow their
+  href. `--check` rewrites nothing and fails on any finding, `--all` widens the
+  scope past the files the branch changed, and `--corpus` replaces the default
+  `specs/**/spec.md`, `.specify/spec.md` and `adrs/*.md`.
+- The pure logic ships as `spec/spec-reanchor.js`, beside the spec parsers.
+
 ## 1.4.1
 
 - 1.4.0 reached npm without `prefer-design-tokens`: the tarball was packed from
