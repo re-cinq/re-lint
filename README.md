@@ -514,24 +514,21 @@ and checks appears here verbatim.
 
 ## Releasing
 
-The version lives in three places and they must agree: `package.json`,
-`package-lock.json`, and the `VERSION` constant in `src/index.mjs` that the
-plugin reports as `meta.version`. Only the first is machine-checked, so bump
-all three together.
+A GitHub Release is the release. The version comes from its tag:
+`package.json` carries the placeholder `0.0.0` on `main` and is never bumped,
+and the plugin reads `meta.version` from it at runtime, so no commit ever
+changes a version number.
 
-1. Open a pull request that bumps the version and adds the `CHANGELOG.md`
-   entry. The tag must match `package.json` exactly or the release fails.
-2. Merge it, then tag the merge commit and push the tag:
-
-   ```sh
-   git fetch origin main
-   git tag v<version> origin/main
-   git push origin v<version>
-   ```
-
-3. Pushing the tag starts the publish workflow. It refuses a tag whose version
-   differs from the manifest, runs the full suite, then _stages_ the version on
-   npm with provenance over OIDC. No token is stored in CI.
+1. Land the changes on `main` as usual. A pull request that changes behaviour
+   adds its `CHANGELOG.md` entry under the version it will ship in.
+2. On GitHub, draft a new release. Create a `vX.Y.Z` tag on `main`, generate
+   the release notes, and publish it. Only a stable `vX.Y.Z` tag is accepted.
+3. Publishing the release starts the publish workflow. A first job rejects a
+   malformed or prerelease tag in seconds. A second, read-only job repeats the
+   CI gates at the tag: tests, lint, formatting and the tarball check. Only
+   then does the third job, the only one holding the npm credential, stamp the
+   tag's version into `package.json`, build, and _stage_ the version on npm
+   with provenance over OIDC. No token is stored in CI.
 4. Approve the stage. Until you do, the version sits on the registry and nobody
    can install it. Use the package's Versions tab on npmjs.com and approve with
    2FA, or:
@@ -545,12 +542,12 @@ The trusted publisher grants staged publishing only, so no workflow run can
 make a version installable by itself. Publishing by hand bypasses that review
 and loses the provenance attestation with it.
 
-Two traps worth knowing. The `workflow_dispatch` trigger skips the version
-check, because that step only runs for tag pushes, so prefer the tag. And if a
-release fails for a reason you fix on `main`, re-running the old run will not
-help: a re-run replays the workflow file from the commit the tag pointed at.
-Move the tag instead, with `git tag -f` and `git push -f`, which is safe for a
-version that never reached the registry.
+A draft release never starts the workflow, and a pre-release is refused. To
+retry a failed publish, run the workflow by hand against the release's tag:
+from any other ref the tag check fails. A retry runs the workflow file as it
+was at the tagged commit, so if the fix is on `main`, delete the release and
+its tag and publish a fresh release from the new `main`. That is safe for any
+version the registry never accepted.
 
 ## License
 

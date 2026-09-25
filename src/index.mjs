@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import calleeBelowCaller from "./rules/callee-below-caller.mjs";
 import declareNearUse from "./rules/declare-near-use.mjs";
 import defaultExportMatchesFilename from "./rules/default-export-matches-filename.mjs";
@@ -40,7 +41,8 @@ import requireStatusMatchesCoverage from "./rules/require-status-matches-coverag
 import testImportsItsSubject from "./rules/test-imports-its-subject.mjs";
 
 const NAME = "@re-cinq/eslint-plugin-re-lint";
-const VERSION = "1.5.0";
+// The release tag stamps package.json at publish time; main carries a placeholder.
+const { version: VERSION } = createRequire(import.meta.url)("../package.json");
 
 const rules = {
   "callee-below-caller": calleeBelowCaller,
