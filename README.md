@@ -512,10 +512,45 @@ nor listed as opt-in. Every config snippet in this README is a file under
 `test-fixtures/readme/` that `src/readme.test.mjs` loads with the real ESLint
 and checks appears here verbatim.
 
-Releases: bump `version` in `package.json`, merge, then push a `v<version>`
-tag. The publish workflow refuses a tag whose version differs from the
-manifest and publishes with npm provenance over OIDC (no token in CI), per
-Lore's ADR-045.
+## Releasing
+
+The version lives in three places and they must agree: `package.json`,
+`package-lock.json`, and the `VERSION` constant in `src/index.mjs` that the
+plugin reports as `meta.version`. Only the first is machine-checked, so bump
+all three together.
+
+1. Open a pull request that bumps the version and adds the `CHANGELOG.md`
+   entry. The tag must match `package.json` exactly or the release fails.
+2. Merge it, then tag the merge commit and push the tag:
+
+   ```sh
+   git fetch origin main
+   git tag v<version> origin/main
+   git push origin v<version>
+   ```
+
+3. Pushing the tag starts the publish workflow. It refuses a tag whose version
+   differs from the manifest, runs the full suite, then _stages_ the version on
+   npm with provenance over OIDC. No token is stored in CI.
+4. Approve the stage. Until you do, the version sits on the registry and nobody
+   can install it. Use the package's Versions tab on npmjs.com and approve with
+   2FA, or:
+
+   ```sh
+   npm stage list
+   npm stage approve <id>
+   ```
+
+The trusted publisher grants staged publishing only, so no workflow run can
+make a version installable by itself. Publishing by hand bypasses that review
+and loses the provenance attestation with it.
+
+Two traps worth knowing. The `workflow_dispatch` trigger skips the version
+check, because that step only runs for tag pushes, so prefer the tag. And if a
+release fails for a reason you fix on `main`, re-running the old run will not
+help: a re-run replays the workflow file from the commit the tag pointed at.
+Move the tag instead, with `git tag -f` and `git push -f`, which is safe for a
+version that never reached the registry.
 
 ## License
 
