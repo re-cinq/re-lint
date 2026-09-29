@@ -44,10 +44,34 @@ test("findTestDeclarations unescapes and unwraps titles with their lines", () =>
   ]);
 });
 
-test("titleOfLabel names the test of a titled label and null for L7", () => {
+test("titleOfLabel names the test of a prefixed or bare label and null for L7 and a basename label", () => {
   assert.deepEqual(
-    [titleOfLabel("validated by  adds   numbers"), titleOfLabel("L7")],
-    ["adds numbers", null],
+    [
+      titleOfLabel("validated by  adds   numbers"),
+      titleOfLabel("implemented by `adds numbers`"),
+      titleOfLabel("adds numbers"),
+      titleOfLabel("L7"),
+      titleOfLabel("`Maths.test.ts:3`"),
+      titleOfLabel("validated by Maths.test.ts:3"),
+    ],
+    ["adds numbers", "adds numbers", "adds numbers", null, null, null],
+  );
+});
+
+test("anchorLinksIn resolves a root href, tries a ../ href beside the document then at the root, and skips a URL", () => {
+  const [links] = anchorLinksIn(
+    [
+      "A. ([validated by](apps/a.test.ts#L3), [b](../lib/b.ts#L4), [c](https://example.test/c.test.ts#L5))",
+    ],
+    "specs/a/spec.md",
+  );
+
+  assert.deepEqual(
+    links.map(({ target, candidates }) => ({ target, candidates })),
+    [
+      { target: "apps/a.test.ts", candidates: ["apps/a.test.ts"] },
+      { target: "specs/lib/b.ts", candidates: ["specs/lib/b.ts", "lib/b.ts"] },
+    ],
   );
 });
 
@@ -66,6 +90,7 @@ test("pairWithBase gives a reworded line's link the base line 6", () => {
     linkPath: "../../a.test.ts",
     line: 6,
     target: "a.test.ts",
+    candidates: ["a.test.ts"],
     baseLine: 6,
   });
 });
@@ -127,5 +152,56 @@ test("a reanchorer maps a link L6 to L8 through an in-memory repository", () => 
   assert.deepEqual(
     [result.text, result.tally.moved],
     ["One. ([validated by](../../src/a.ts#L8))", 1],
+  );
+});
+
+test("a reanchorer reports a titled link whose title no test in the cited file carries", () => {
+  const reanchor = createReanchorer(
+    {
+      workingFile: () => 'it("adds numbers", () => {});\n',
+      hunks: () => [],
+      isChanged: () => true,
+    },
+    { check: false, all: false },
+  );
+  const source =
+    "One. ([validated by multiplies numbers](../../tests/a.test.ts#L1))";
+  const result = reanchor({
+    docPath: "specs/a/spec.md",
+    source,
+    baseSource: source,
+  });
+
+  assert.deepEqual(
+    [result.text, result.tally.reports.unmapped],
+    [
+      source,
+      [
+        'specs/a/spec.md: ../../tests/a.test.ts#L1 -> no test in tests/a.test.ts carries the title "multiplies numbers"',
+      ],
+    ],
+  );
+});
+
+test("a reanchorer maps a ../ link L6 to L8 through the root copy when no file sits beside the document", () => {
+  const reanchor = createReanchorer(
+    {
+      workingFile: (path) =>
+        path === "lib/a.ts" ? "a\nb\nc\nd\ne\nf\ng\nh\n" : null,
+      hunks: () => [{ oldStart: 0, oldCount: 0, newCount: 2 }],
+      isChanged: () => true,
+    },
+    { check: false, all: false },
+  );
+  const source = "One. ([validated by](../lib/a.ts#L6))";
+  const result = reanchor({
+    docPath: "specs/a/spec.md",
+    source,
+    baseSource: source,
+  });
+
+  assert.deepEqual(
+    [result.text, result.tally.moved, result.tally.reports.rotten],
+    ["One. ([validated by](../lib/a.ts#L8))", 1, []],
   );
 });

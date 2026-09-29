@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.6.0
+
+- `re-lint-reanchor` reports a `[validated by <title>]` link into a test file
+  when no `it()`/`test()` there carries the title, in both modes, and leaves
+  the link as it was. Until now the link fell through to the hunk mapping, so
+  a label left stale by a renamed test kept passing `--check` for as long as
+  its line still mapped.
+- `re-lint-reanchor` reads every link form a consumer's specs use, so it can
+  replace a consumer's own copy of this logic: an href written from the repo root
+  (`src/a.test.ts#L3`) beside the `../` form, and a `../` href with no file
+  beside the document read from the root; an `implemented by <title>` label
+  and a bare `[<title>]` label follow their test like `validated by <title>`
+  does, though a bare label naming no test is mapped through the hunks rather
+  than reported; a `file.test.ts:NN` label names no test and is kept as
+  written. The default corpus widens to `specs/**/*.md` and `adrs/**/*.md`.
+  A URL is left alone.
+
 ## 1.5.0
 
 - New `re-lint-reanchor` command heals the `#Lnn` links in spec markdown after
