@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { enforceTrue } from "#spec/enforce.js";
 import calleeBelowCaller from "./rules/callee-below-caller.mjs";
 import declareNearUse from "./rules/declare-near-use.mjs";
 import defaultExportMatchesFilename from "./rules/default-export-matches-filename.mjs";
@@ -245,6 +246,53 @@ function recommended({ tseslint, stylistic } = {}) {
   ];
 }
 
+const SPEC_DOCUMENT_RULES = {
+  "re-lint/require-intro-paragraph": "error",
+  "re-lint/require-statement-links": "warn",
+  "re-lint/require-status-matches-coverage": "error",
+};
+
+function markdownBlock(markdown, name, files, rules) {
+  return {
+    name: `re-lint/${name}`,
+    files,
+    language: "markdown/gfm",
+    plugins: { markdown, "re-lint": plugin },
+    rules,
+  };
+}
+
+/**
+ * The spec-traceability rules over a repository's `specs/` and `adrs/` documents, as the
+ * repository this package grew out of runs them: `@eslint/markdown` is passed in rather than
+ * imported, so the package does not depend on it.
+ */
+function specs({ markdown } = {}) {
+  enforceTrue(
+    markdown !== undefined,
+    Error,
+    'specs({ markdown }) needs @eslint/markdown: import markdown from "@eslint/markdown"',
+  );
+
+  return [
+    markdownBlock(
+      markdown,
+      "specs",
+      ["specs/**/spec.md", "adrs/**/*.md"],
+      SPEC_DOCUMENT_RULES,
+    ),
+    markdownBlock(markdown, "specs-links", ["**/*.md"], {
+      "re-lint/no-dead-md-links": "error",
+    }),
+    {
+      name: "re-lint/specs-tests",
+      files: ["**/*.{test,spec}.{ts,tsx,mts,js,jsx,mjs}"],
+      plugins: { "re-lint": plugin },
+      rules: { "re-lint/require-spec-link": "error" },
+    },
+  ];
+}
+
 const plugin = {
   meta: { name: NAME, version: VERSION },
   rules,
@@ -252,5 +300,6 @@ const plugin = {
 };
 
 plugin.configs.recommended = recommended;
+plugin.configs.specs = specs;
 
 export default plugin;

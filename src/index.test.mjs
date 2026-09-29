@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { ESLint } from "eslint";
 import tseslint from "typescript-eslint";
 import stylistic from "@stylistic/eslint-plugin";
+import markdown from "@eslint/markdown";
 import plugin, { OPT_IN_RULES } from "./index.mjs";
 
 const presetRuleNames = (configs) =>
@@ -60,5 +61,82 @@ test("the preset lints a TypeScript file without configuration errors", async ()
   assert.deepEqual(
     result.messages.filter((message) => message.fatal),
     [],
+  );
+});
+
+test("specs({ markdown }) wires the four document rules over specs and ADRs and require-spec-link over tests", () => {
+  const [documents, links, tests] = plugin.configs.specs({ markdown });
+
+  assert.deepEqual(
+    [documents, links, tests].map(({ files, language, plugins, rules }) => ({
+      files,
+      language,
+      plugins: Object.keys(plugins),
+      rules,
+    })),
+    [
+      {
+        files: ["specs/**/spec.md", "adrs/**/*.md"],
+        language: "markdown/gfm",
+        plugins: ["markdown", "re-lint"],
+        rules: {
+          "re-lint/require-intro-paragraph": "error",
+          "re-lint/require-statement-links": "warn",
+          "re-lint/require-status-matches-coverage": "error",
+        },
+      },
+      {
+        files: ["**/*.md"],
+        language: "markdown/gfm",
+        plugins: ["markdown", "re-lint"],
+        rules: { "re-lint/no-dead-md-links": "error" },
+      },
+      {
+        files: ["**/*.{test,spec}.{ts,tsx,mts,js,jsx,mjs}"],
+        language: undefined,
+        plugins: ["re-lint"],
+        rules: { "re-lint/require-spec-link": "error" },
+      },
+    ],
+  );
+});
+
+test("specs() without @eslint/markdown throws naming the missing plugin", () => {
+  assert.throws(
+    () => plugin.configs.specs(),
+    /specs\(\{ markdown \}\) needs @eslint\/markdown/,
+  );
+});
+
+test("the specs preset runs all three document rules on a Shipped spec with one unlinked requirement", async () => {
+  const eslint = new ESLint({
+    overrideConfigFile: true,
+    overrideConfig: [...plugin.configs.specs({ markdown })],
+  });
+  const spec = [
+    "# Tasks",
+    "",
+    "Every task the platform records.",
+    "",
+    "| Field | Value |",
+    "|---|---|",
+    "| Status | Shipped |",
+    "",
+    "## Functional Requirements",
+    "",
+    "The system records every task.",
+    "",
+  ].join("\n");
+  const [result] = await eslint.lintText(spec, {
+    filePath: "specs/tasks/spec.md",
+  });
+
+  assert.deepEqual(
+    [...new Set(result.messages.map((message) => message.ruleId))].sort(),
+    [
+      "re-lint/require-intro-paragraph",
+      "re-lint/require-statement-links",
+      "re-lint/require-status-matches-coverage",
+    ],
   );
 });

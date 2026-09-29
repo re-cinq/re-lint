@@ -2,6 +2,13 @@
 
 ## 1.6.0
 
+- New `specs` preset: `reLint.configs.specs({ markdown })` wires the four
+  document rules over `specs/**/spec.md`, `adrs/**/*.md` and every markdown
+  file, plus `require-spec-link` over test files, at the severities the
+  repository this package grew out of runs them. README § Keeping specs true
+  gives the adoption recipe: the preset, `re-lint-reanchor` at the end of the
+  `format` script, and a CI job that commits the healed anchors back or fails
+  on `--check`.
 - `re-lint-reanchor` reports a `[validated by <title>]` link into a test file
   when no `it()`/`test()` there carries the title, in both modes, and leaves
   the link as it was. Until now the link fell through to the hunk mapping, so
