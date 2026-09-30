@@ -8,6 +8,10 @@ export default [
       "re-lint/no-inline-styles": "error",
       "re-lint/no-prop-mutation": "error",
       "re-lint/no-sql-in-web-ui": "error",
+      "re-lint/no-unguarded-async-button": [
+        "error",
+        { pendingComponent: "PendingButton", submitComponent: "SubmitButton" },
+      ],
       "re-lint/default-export-matches-filename": "error",
       "re-lint/no-io-in-view": [
         "error",

@@ -120,16 +120,17 @@ that only the consumer knows, and report nothing until they get it.
 
 ### Objects and modules
 
-| Rule                          | Reports                                                                                                      | Options                                                                                       | Fix | Preset                    |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- | --- | ------------------------- |
-| `no-hybrid-class`             | a class with public mutable fields and methods: half data structure, half object                             | `ignoreDecorated: true`                                                                       |     | yes                       |
-| `no-reexport-only-module`     | a module whose whole top level is re-exports; forward from an index instead                                  | `allow: ["page.tsx", "layout.tsx", "route.ts"]`                                               |     | yes                       |
-| `no-inline-styles`            | `style={{ ... }}` in JSX; use a colocated stylesheet                                                         |                                                                                               |     | opt-in (scope to UI code) |
-| `no-io-in-view`               | a presentational component (`<name>View.tsx` and friends) importing the data layer or calling the network    | `viewSuffixes: ["View","Card","Table","Section","Badge","Row"]`, `dataModules: []` (required) |     | opt-in                    |
-| `no-sql-in-web-ui`            | SQL strings or a database client in UI code; move the query behind an API route                              |                                                                                               |     | opt-in (scope to UI code) |
-| `no-row-types-outside-models` | a type restating a table's columns outside the models directory                                              | `modelsDir: ""`, `exemptNames: []`                                                            |     | opt-in                    |
-| `prefer-enforce-true`         | `if (!cond) throw ...` guards; rewrites to `enforceTrue(cond, Error, message)` imported from `enforceModule` | `enforceModule: { specifier, sourceDir? }` (required)                                         | yes | opt-in                    |
-| `prefer-api-error`            | an if-return answering `h.response({ error }).code(4xx)`; rewrites to `enforceTrue(cond, apiError(status))`  | `enforceModule`, `errorModules: [{ root, path }]` (required)                                  | yes | opt-in                    |
+| Rule                          | Reports                                                                                                                                           | Options                                                                                                             | Fix | Preset                    |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --- | ------------------------- |
+| `no-hybrid-class`             | a class with public mutable fields and methods: half data structure, half object                                                                  | `ignoreDecorated: true`                                                                                             |     | yes                       |
+| `no-reexport-only-module`     | a module whose whole top level is re-exports; forward from an index instead                                                                       | `allow: ["page.tsx", "layout.tsx", "route.ts"]`                                                                     |     | yes                       |
+| `no-inline-styles`            | `style={{ ... }}` in JSX; use a colocated stylesheet                                                                                              |                                                                                                                     |     | opt-in (scope to UI code) |
+| `no-unguarded-async-button`   | a `<button type="submit">`, or a button whose `onClick` is an async function, with no `disabled` binding; a second click starts the request again | `components: []` (a consumer's own button components), `pendingComponent`, `submitComponent` (named in the message) |     | opt-in (scope to UI code) |
+| `no-io-in-view`               | a presentational component (`<name>View.tsx` and friends) importing the data layer or calling the network                                         | `viewSuffixes: ["View","Card","Table","Section","Badge","Row"]`, `dataModules: []` (required)                       |     | opt-in                    |
+| `no-sql-in-web-ui`            | SQL strings or a database client in UI code; move the query behind an API route                                                                   |                                                                                                                     |     | opt-in (scope to UI code) |
+| `no-row-types-outside-models` | a type restating a table's columns outside the models directory                                                                                   | `modelsDir: ""`, `exemptNames: []`                                                                                  |     | opt-in                    |
+| `prefer-enforce-true`         | `if (!cond) throw ...` guards; rewrites to `enforceTrue(cond, Error, message)` imported from `enforceModule`                                      | `enforceModule: { specifier, sourceDir? }` (required)                                                               | yes | opt-in                    |
+| `prefer-api-error`            | an if-return answering `h.response({ error }).code(4xx)`; rewrites to `enforceTrue(cond, apiError(status))`                                       | `enforceModule`, `errorModules: [{ root, path }]` (required)                                                        | yes | opt-in                    |
 
 ### Architecture
 
@@ -162,6 +163,10 @@ export default [
       "re-lint/no-inline-styles": "error",
       "re-lint/no-prop-mutation": "error",
       "re-lint/no-sql-in-web-ui": "error",
+      "re-lint/no-unguarded-async-button": [
+        "error",
+        { pendingComponent: "PendingButton", submitComponent: "SubmitButton" },
+      ],
       "re-lint/default-export-matches-filename": "error",
       "re-lint/no-io-in-view": [
         "error",
