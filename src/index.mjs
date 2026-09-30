@@ -26,6 +26,7 @@ import noPropMutation from "./rules/no-prop-mutation.mjs";
 import noReexportOnlyModule from "./rules/no-reexport-only-module.mjs";
 import noRowTypesOutsideModels from "./rules/no-row-types-outside-models.mjs";
 import noSqlInWebUi from "./rules/no-sql-in-web-ui.mjs";
+import noUnguardedAsyncButton from "./rules/no-unguarded-async-button.mjs";
 import noVagueNames from "./rules/no-vague-names.mjs";
 import preferApiError from "./rules/prefer-api-error.mjs";
 import preferDesignTokens from "./rules/prefer-design-tokens.mjs";
@@ -72,6 +73,7 @@ const rules = {
   "no-reexport-only-module": noReexportOnlyModule,
   "no-row-types-outside-models": noRowTypesOutsideModels,
   "no-sql-in-web-ui": noSqlInWebUi,
+  "no-unguarded-async-button": noUnguardedAsyncButton,
   "no-vague-names": noVagueNames,
   "prefer-api-error": preferApiError,
   "prefer-design-tokens": preferDesignTokens,
@@ -108,6 +110,7 @@ export const OPT_IN_RULES = [
   "no-inline-styles",
   "no-prop-mutation",
   "no-sql-in-web-ui",
+  "no-unguarded-async-button",
   "default-export-matches-filename",
   "prefer-design-tokens",
 ];
