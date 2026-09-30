@@ -258,6 +258,23 @@ Every task creates an Issue. ([validated by](src/tasks/create.test.ts#L42))
 | `require-status-matches-coverage` | a `\| Status \|` row that disagrees with link coverage: none is Draft, some is In Progress, all is Shipped | `roots`                                     |
 | `no-dead-md-links`                | a markdown link to a repository file that does not exist, or a `#Lnn` past the end of the file             |                                             |
 
+The `specs` preset wires all four, plus `require-spec-link` over test files,
+the way the repository this package grew out of runs them: the three
+`require-*` document rules over `specs/**/spec.md` and `adrs/**/*.md`
+(`require-statement-links` at `warn`, so a spec still being linked does not
+block the branch), `no-dead-md-links` over every markdown file, and
+`require-spec-link` at `error`. `@eslint/markdown` is passed in, as
+`typescript-eslint` is to `recommended`:
+
+```js
+import markdown from "@eslint/markdown";
+import reLint from "@re-cinq/eslint-plugin-re-lint";
+
+export default [...reLint.configs.specs({ markdown })];
+```
+
+Or wire the rules by hand:
+
 ```js
 import markdown from "@eslint/markdown";
 import reLint from "@re-cinq/eslint-plugin-re-lint";
@@ -451,6 +468,44 @@ It also exports the building blocks: `anchorLinksIn`, `pairWithBase`,
 `findTestDeclarations`, `normalizeTitle`, `titleOfLabel`, `claimsTitle`, `mapLine`,
 `rottenReason`, `syncedLabel`, `selectCorpus`, `globToRegExp` and
 `DEFAULT_CORPUS`.
+
+## Keeping specs true: the adoption recipe
+
+A spec drifts in two ways: a statement stops describing what the tests prove,
+and a `#Lnn` anchor stops pointing at the line it cites. The repository this
+package grew out of holds both in check with four pieces, and every other
+repository gets the same discipline from this package alone:
+
+1. **Statements carry their evidence.** Every testable statement in
+   `specs/**/spec.md` ends with `([validated by <test title>](path#Lnn))`, and
+   the `| Status |` row follows link coverage: no links is `Draft`, some is
+   `In Progress`, all is `Shipped`. The `specs` preset above enforces this,
+   fails a link to a file or line that does not exist, and reports a test no
+   spec or ADR cites.
+2. **Anchors heal on format.** `re-lint-reanchor` runs as the last step of the
+   repository's `format` script, so a test moved by an insertion above it
+   takes its links along:
+
+   ```json
+   {
+     "scripts": {
+       "format": "prettier --write . && re-lint-reanchor"
+     }
+   }
+   ```
+
+3. **CI keeps the branch honest.** Either the format job commits the healed
+   anchors back to the branch (check out with `fetch-depth: 0`, since the
+   command scopes itself to the files changed against the merge base), or a
+   check job runs `re-lint-reanchor --check origin/$BASE_REF` and fails on a
+   stale, unmapped or rotten link. Both need the base branch fetched.
+4. **Agents that write tests re-anchor too.** Any recipe or prompt that adds
+   or moves a test runs the `format` script before committing, so the links
+   it shifted arrive healed rather than as the review's last red check.
+
+The one thing the package cannot do is write the links. Authors add them by
+hand, or a tool that proposes them opens a pull request; the preset then
+holds the spec's status to what those links prove.
 
 ## Adopting in an existing repository
 
