@@ -235,18 +235,21 @@ describe("re-lint-reanchor", () => {
     );
   });
 
-  it("maps a titled link whose title no test carries through the hunks, L6 to L8", () => {
-    const repo = repoWith(
-      asSpec(link("validated by a test since renamed", "6")),
-    );
+  it("reports a titled link whose title no test carries and exits 1 in both modes, rewriting nothing", () => {
+    const spec = asSpec(link("validated by a test since renamed", "6"));
+    const repo = repoWith(spec);
 
     prependIntro(repo);
-    run(repo, "main");
+    const check = run(repo, "--check", "main");
+    const rewrite = run(repo, "main");
 
-    assert.equal(
-      read(repo, SPEC_PATH),
-      asSpec(link("validated by a test since renamed", "8")),
-    );
+    const finding =
+      'unmapped specs/maths/spec.md: ../../tests/Maths.test.ts#L6 -> no test in tests/Maths.test.ts carries the title "a test since renamed"';
+
+    assert.deepEqual([check.status, rewrite.status], [1, 1]);
+    assert.ok(check.stderr.includes(finding));
+    assert.ok(rewrite.stderr.includes(finding));
+    assert.equal(read(repo, SPEC_PATH), spec);
   });
 
   it("reports an untitled link on a deleted line and exits 1 in both modes, rewriting nothing", () => {
@@ -582,5 +585,155 @@ describe("re-lint-reanchor", () => {
 
     assert.equal(result.status, 2);
     assert.match(result.stderr, /no-such-ref/);
+  });
+
+  it("moves a titled link written from the repo root, tests/Maths.test.ts#L5 to L7", () => {
+    const rootLink = (line) =>
+      `[validated by subtracts numbers](tests/Maths.test.ts#L${line})`;
+    const repo = repoWith(asSpec(rootLink(5)));
+
+    prependIntro(repo);
+    const result = run(repo, "main");
+
+    assert.equal(result.status, 0);
+    assert.equal(read(repo, SPEC_PATH), asSpec(rootLink(7)));
+  });
+
+  it("reports a ../ href with no file beside the document as rotten and exits 1, though tests/Maths.test.ts sits at the root", () => {
+    const spec = asSpec(
+      "[validated by subtracts numbers](../tests/Maths.test.ts#L5)",
+    );
+    const repo = repoWith(spec);
+
+    prependIntro(repo);
+    const result = run(repo, "main");
+
+    assert.deepEqual(
+      [
+        result.status,
+        result.stderr.split("\n").filter((line) => line.startsWith("rotten")),
+        read(repo, SPEC_PATH),
+      ],
+      [
+        1,
+        [
+          "rotten specs/maths/spec.md: ../tests/Maths.test.ts#L5 -> specs/tests/Maths.test.ts does not exist in the working tree",
+        ],
+        spec,
+      ],
+    );
+  });
+
+  it("maps a bare href to the file beside the document when none sits at the root, table.ts L2 to L4", () => {
+    const siblingLink = (line) => `[row](table.ts#L${line})`;
+    const repo = repoWith(asSpec(siblingLink(2)), MATHS_TEST, {
+      "specs/maths/table.ts": asFile(["one", "two", "three"]),
+    });
+
+    write(
+      repo,
+      "specs/maths/table.ts",
+      asFile(["zero", "half", "one", "two", "three"]),
+    );
+    const result = run(repo, "main");
+
+    assert.deepEqual(
+      [result.status, read(repo, SPEC_PATH)],
+      [0, asSpec(siblingLink(4))],
+    );
+  });
+
+  it("follows a bare label naming a test, L5 to L7, and maps one naming none through the hunks without a report", () => {
+    const repo = repoWith(
+      asSpec(link("subtracts numbers", "5"), link("the subtraction case", "5")),
+    );
+
+    prependIntro(repo);
+    const result = run(repo, "main");
+
+    assert.deepEqual(
+      [
+        result.status,
+        result.stderr.includes("unmapped"),
+        read(repo, SPEC_PATH),
+      ],
+      [
+        0,
+        false,
+        asSpec(
+          link("subtracts numbers", "7"),
+          link("the subtraction case", "7"),
+        ),
+      ],
+    );
+  });
+
+  it("maps a Maths.test.ts:5 label through the hunks to L7 and keeps the label as written", () => {
+    const repo = repoWith(
+      asSpec(
+        link("`Maths.test.ts:5`", "5"),
+        link("validated by `Maths.test.ts:5`", "5"),
+      ),
+    );
+
+    prependIntro(repo);
+    const result = run(repo, "main");
+
+    assert.deepEqual(
+      [
+        result.status,
+        result.stderr.includes("unmapped"),
+        read(repo, SPEC_PATH),
+      ],
+      [
+        0,
+        false,
+        asSpec(
+          link("`Maths.test.ts:5`", "7"),
+          link("validated by `Maths.test.ts:5`", "7"),
+        ),
+      ],
+    );
+  });
+
+  it("moves an implemented-by link L5 to L7 and reports one whose title no test carries", () => {
+    const repo = repoWith(
+      asSpec(
+        link("implemented by subtracts numbers", "5"),
+        link("implemented by a test since renamed", "5"),
+      ),
+    );
+
+    prependIntro(repo);
+    const result = run(repo, "main");
+
+    assert.equal(result.status, 1);
+    assert.ok(
+      result.stderr.includes(
+        'no test in tests/Maths.test.ts carries the title "a test since renamed"',
+      ),
+    );
+    assert.equal(
+      read(repo, SPEC_PATH),
+      asSpec(
+        link("implemented by subtracts numbers", "7"),
+        link("implemented by a test since renamed", "5"),
+      ),
+    );
+  });
+
+  it("re-anchors specs/maths/tasks.md by default, L6 to L8", () => {
+    const repo = repoWith(asSpec(link("validated by", "6")), MATHS_TEST, {
+      "specs/maths/tasks.md":
+        "Task. ([validated by](../../tests/Maths.test.ts#L6))\n",
+    });
+
+    prependIntro(repo);
+    run(repo, "main");
+
+    assert.equal(
+      read(repo, "specs/maths/tasks.md"),
+      "Task. ([validated by](../../tests/Maths.test.ts#L8))\n",
+    );
   });
 });

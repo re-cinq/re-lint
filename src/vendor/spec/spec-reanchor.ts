@@ -1,20 +1,23 @@
-// Pure logic behind `re-lint-reanchor`: heals the `[label](../path#Lnn)` links in spec markdown after a branch edits a cited file. Git and fs access stay in the CLI, behind `ReanchorRepository`.
+// Pure logic behind `re-lint-reanchor`: heals the `[label](path#Lnn)` links in spec markdown after a branch edits a cited file. Git and fs access stay in the CLI, behind `ReanchorRepository`.
 import { posix } from "node:path";
 
 /** The documents a corpus scan reads when no pattern is given, in report order. */
 export const DEFAULT_CORPUS: readonly string[] = [
-  "specs/**/spec.md",
+  "specs/**/*.md",
   ".specify/spec.md",
-  "adrs/*.md",
+  "adrs/**/*.md",
 ];
 
 /** Files whose `it()`/`test()` declarations a titled link can relocate to. */
 export const DEFAULT_TEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 
-const ANCHOR_LINK = /\[([^\]]*)\]\(((?:\.\.\/)+[^)#\s]+)#L(\d+)\)/g;
+// A `[label](path#Lnn)` link whose path is relative, so a URL's scheme rules it out.
+const ANCHOR_LINK =
+  /\[([^\]]*)\]\(((?![A-Za-z][A-Za-z0-9+.-]*:)[^)#\s]+)#L(\d+)\)/g;
 const DECLARATION =
   /^\s*(?:it|test)(?:\.(?:only|skip|todo|concurrent|sequential|fails))?\s*\(\s*(['"`])((?:\\.|(?!\1).)*)\1/;
-const TITLED_LABEL = /^validated by\s+(\S[\s\S]*)$/;
+const LABEL_PREFIX = /^(?:validated|implemented) by(?:\s+|$)/;
+const BASENAME_LABEL = /^[^`\s/]+\.(?:test|spec)\.[cm]?[jt]sx?:\d+$/;
 const LINE_LABEL = /^L\d+$/;
 const CONTENTLESS = /^[)\]}>,;]*$/;
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm;
@@ -26,15 +29,17 @@ export interface Hunk {
   newCount: number;
 }
 
-/** A `[label](../path#Lnn)` link found in a markdown document. */
+/** A `[label](path#Lnn)` link found in a markdown document. */
 export interface AnchorLink {
   label: string;
   /** The href's path as written, `../` climb included. */
   linkPath: string;
   /** The `#Lnn` line number as written. */
   line: number;
-  /** The href resolved against the document's directory, repo-relative. */
+  /** The first of `candidates`: the path the link is paired and reported by. */
   target: string;
+  /** Where the href may point, repo-relative, in the order tried: beside the document for a `./` or `../` href, the repo root for a `/` href, the root then beside the document for a bare one. */
+  candidates: string[];
   /** The paired merge-base link's line, or null when the branch added the link. */
   baseLine: number | null;
 }
@@ -155,11 +160,39 @@ export function normalizeTitle(title: string): string {
     .trim();
 }
 
-/** The test title a `validated by <title>` label names, or null for any other label. */
+/**
+ * The test title a label may name, with any `validated by` or `implemented by` prefix removed:
+ * null for an empty label, an `Lnn` label and a `file.test.ts:NN` label.
+ */
 export function titleOfLabel(label: string): string | null {
-  const match = TITLED_LABEL.exec(label.trim());
+  const title = normalizeTitle(label.trim().replace(LABEL_PREFIX, ""));
+  const unnamed =
+    title.length === 0 || LINE_LABEL.test(title) || BASENAME_LABEL.test(title);
 
-  return match ? normalizeTitle(match[1]) : null;
+  return unnamed ? null : title;
+}
+
+/** Whether a label states the test it names, as `validated by <title>` or `implemented by <title>` does. */
+export function claimsTitle(label: string): boolean {
+  return LABEL_PREFIX.test(label.trim()) && titleOfLabel(label) !== null;
+}
+
+// A `./` or `../` href climbs from the document and a `/` href from the repo root; a bare href is read from the root, as specs write it, then beside the document, as GitHub renders it.
+function candidatePaths(linkPath: string, docPath: string): string[] {
+  const besideDocument = posix.normalize(
+    posix.join(posix.dirname(docPath), linkPath),
+  );
+  const fromRoot = posix.normalize(linkPath.replace(/^\/+/, ""));
+
+  if (/^\.\.?\//.test(linkPath)) {
+    return [besideDocument];
+  }
+
+  if (linkPath.startsWith("/")) {
+    return [fromRoot];
+  }
+
+  return [...new Set([fromRoot, besideDocument])];
 }
 
 /** Every single-line `it()`/`test()` declaration in a test file's source. */
@@ -184,13 +217,18 @@ export function anchorLinksIn(
   docPath: string,
 ): AnchorLink[][] {
   return markdownLines.map((text) =>
-    [...text.matchAll(ANCHOR_LINK)].map((match) => ({
-      label: match[1],
-      linkPath: match[2],
-      line: Number(match[3]),
-      target: posix.normalize(posix.join(posix.dirname(docPath), match[2])),
-      baseLine: null,
-    })),
+    [...text.matchAll(ANCHOR_LINK)].map((match) => {
+      const candidates = candidatePaths(match[2], docPath);
+
+      return {
+        label: match[1],
+        linkPath: match[2],
+        line: Number(match[3]),
+        target: candidates[0],
+        candidates,
+        baseLine: null,
+      };
+    }),
   );
 }
 
@@ -386,10 +424,12 @@ export function addTallies(
 }
 
 /**
- * Binds a repository and options to a document re-anchorer. A `validated by <title>` link into a
- * test file moves to the one declaration carrying that title, unless its hunk-mapped anchor still
- * lies inside that test; every other link is mapped through the cited file's hunks from its paired
- * merge-base line. A link the branch added or whose href it edited by hand is kept as authored.
+ * Binds a repository and options to a document re-anchorer. A link into a test file whose label
+ * names a test moves to the one declaration carrying that title, unless its hunk-mapped anchor
+ * still lies inside that test; a `validated by` or `implemented by` title no declaration carries
+ * is reported, a bare label naming no test falls back to the hunks. Every other link is mapped
+ * through the cited file's hunks from its paired merge-base line. A link the branch added or
+ * whose href it edited by hand is kept as authored.
  */
 export function createReanchorer(
   repository: ReanchorRepository,
@@ -429,6 +469,14 @@ export function createReanchorer(
       : { authored: true };
   };
 
+  const locate = (link: AnchorLink): AnchorLink => ({
+    ...link,
+    target:
+      link.candidates.find(
+        (candidate) => repository.workingFile(candidate) !== null,
+      ) ?? link.target,
+  });
+
   const byTitle = (link: AnchorLink): Resolution | null => {
     const title = titleOfLabel(link.label);
 
@@ -436,21 +484,21 @@ export function createReanchorer(
       return null;
     }
     const declarations = declarationsIn(link.target);
-    const index = declarations.findIndex(
+    const matches = declarations.filter(
       (declaration) => declaration.title === title,
     );
 
-    if (index === -1) {
-      return null;
-    }
-
-    if (
-      declarations.filter((declaration) => declaration.title === title).length >
-      1
-    ) {
+    if (matches.length > 1) {
       return { failure: `several tests carry the title "${title}"` };
     }
-    const start = declarations[index].line;
+
+    if (matches.length === 0) {
+      return claimsTitle(link.label)
+        ? { failure: `no test in ${link.target} carries the title "${title}"` }
+        : null;
+    }
+    const index = declarations.indexOf(matches[0]);
+    const start = matches[0].line;
     const end = declarations[index + 1]?.line ?? Infinity;
     const intended = intendedLine(byHunks(link), link.line, start);
 
@@ -463,10 +511,11 @@ export function createReanchorer(
       : (byTitle(link) ?? byHunks(link));
 
   const rewriteLink = (
-    link: AnchorLink,
+    written: AnchorLink,
     docPath: string,
     tally: ReanchorTally,
   ): string => {
+    const link = locate(written);
     const resolution = resolve(link);
     const where = `${docPath}: ${link.linkPath}#L${link.line}`;
     const line = "line" in resolution ? resolution.line : link.line;

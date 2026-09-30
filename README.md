@@ -398,16 +398,25 @@ npx re-lint-reanchor --check    # CI: rewrite nothing, exit 1 on any finding
 npx re-lint-reanchor --all develop
 ```
 
-- A link labelled `[validated by <test title>]` into a test file moves to the
-  line of the one `it()`/`test()` carrying that title. An anchor inside the
-  test's body is kept while, mapped through the diff, it still lies in that
-  test. A title two tests carry is reported; a title in backticks is unwrapped.
-- Every other `[label](../path#Lnn)` link is paired with its copy in the merge
+- A link into a test file whose label names a test, as
+  `[validated by <test title>]`, `[implemented by <test title>]` or the bare
+  `[<test title>]`, moves to the line of the one `it()`/`test()` carrying that
+  title. An anchor inside the test's body is kept while, mapped through the
+  diff, it still lies in that test. A title two tests carry is reported, as is
+  a `validated by` or `implemented by` title no test in the cited file
+  carries; a bare label naming no test is mapped like any other link. A title
+  in backticks is unwrapped, and a `file.test.ts:NN` label names no test.
+- Every other `[label](path#Lnn)` link is paired with its copy in the merge
   base's version of the markdown and mapped through the cited file's
   `git diff -U0` hunks since `git merge-base <base-ref> HEAD` (plus
   `MERGE_HEAD` during an uncommitted merge). Reading the merge-base copy makes
   a second run a no-op. A link the branch added, or whose href it edited by
   hand, is kept as authored.
+- A `./` or `../` href is read beside the document (`../../src/a.ts`) and a
+  `/` href from the repo root. A bare href (`src/a.ts`) is read from the root,
+  or beside the document when no file sits at the root. A `../` href with no
+  file beside the document is reported as rotten, even when the path exists
+  from the root. A URL is left alone.
 - A cited line the branch deleted or rewrote is reported for a manual fix. An
   anchor on a blank or closing-punctuation line, past the end of its file, or
   into a missing file is reported as rotten. A bare `[L42]` label is synced to
@@ -415,8 +424,8 @@ npx re-lint-reanchor --all develop
 
 Only links into files the branch changed are touched, so a pull request
 carries no unrelated spec churn; `--all` sweeps every link. `base-ref`
-defaults to `origin/main`. The corpus defaults to `specs/**/spec.md`,
-`.specify/spec.md` and `adrs/*.md`; each `--corpus <glob>` replaces it
+defaults to `origin/main`. The corpus defaults to `specs/**/*.md`,
+`.specify/spec.md` and `adrs/**/*.md`; each `--corpus <glob>` replaces it
 (`**`, `*` and `?` are supported). Exit codes: 0 clean, 1 on an unmapped or
 rotten link (or, with `--check`, a stale or mislabelled one), 2 on a bad flag
 or a base ref that does not resolve.
@@ -439,7 +448,7 @@ const { text, tally } = reanchor({ docPath, source, baseSource });
 ```
 
 It also exports the building blocks: `anchorLinksIn`, `pairWithBase`,
-`findTestDeclarations`, `normalizeTitle`, `titleOfLabel`, `mapLine`,
+`findTestDeclarations`, `normalizeTitle`, `titleOfLabel`, `claimsTitle`, `mapLine`,
 `rottenReason`, `syncedLabel`, `selectCorpus`, `globToRegExp` and
 `DEFAULT_CORPUS`.
 

@@ -44,10 +44,39 @@ test("findTestDeclarations unescapes and unwraps titles with their lines", () =>
   ]);
 });
 
-test("titleOfLabel names the test of a titled label and null for L7", () => {
+test("titleOfLabel names the test of a prefixed or bare label and null for L7 and a basename label", () => {
   assert.deepEqual(
-    [titleOfLabel("validated by  adds   numbers"), titleOfLabel("L7")],
-    ["adds numbers", null],
+    [
+      titleOfLabel("validated by  adds   numbers"),
+      titleOfLabel("implemented by `adds numbers`"),
+      titleOfLabel("adds numbers"),
+      titleOfLabel("L7"),
+      titleOfLabel("`Maths.test.ts:3`"),
+      titleOfLabel("validated by Maths.test.ts:3"),
+    ],
+    ["adds numbers", "adds numbers", "adds numbers", null, null, null],
+  );
+});
+
+test("anchorLinksIn reads a bare href from the root then beside the document, a ./ or ../ href only beside it, a / href only from the root, and skips a URL", () => {
+  const [links] = anchorLinksIn(
+    [
+      "A. ([validated by](apps/a.test.ts#L3), [b](../lib/b.ts#L4), [c](./c.ts#L5), [d](/src/d.ts#L6), [e](https://example.test/e.test.ts#L7))",
+    ],
+    "specs/a/spec.md",
+  );
+
+  assert.deepEqual(
+    links.map(({ target, candidates }) => ({ target, candidates })),
+    [
+      {
+        target: "apps/a.test.ts",
+        candidates: ["apps/a.test.ts", "specs/a/apps/a.test.ts"],
+      },
+      { target: "specs/lib/b.ts", candidates: ["specs/lib/b.ts"] },
+      { target: "specs/a/c.ts", candidates: ["specs/a/c.ts"] },
+      { target: "src/d.ts", candidates: ["src/d.ts"] },
+    ],
   );
 });
 
@@ -66,6 +95,7 @@ test("pairWithBase gives a reworded line's link the base line 6", () => {
     linkPath: "../../a.test.ts",
     line: 6,
     target: "a.test.ts",
+    candidates: ["a.test.ts"],
     baseLine: 6,
   });
 });
@@ -127,5 +157,74 @@ test("a reanchorer maps a link L6 to L8 through an in-memory repository", () => 
   assert.deepEqual(
     [result.text, result.tally.moved],
     ["One. ([validated by](../../src/a.ts#L8))", 1],
+  );
+});
+
+test("a reanchorer reports a titled link whose title no test in the cited file carries", () => {
+  const reanchor = createReanchorer(
+    {
+      workingFile: () => 'it("adds numbers", () => {});\n',
+      hunks: () => [],
+      isChanged: () => true,
+    },
+    { check: false, all: false },
+  );
+  const source =
+    "One. ([validated by multiplies numbers](../../tests/a.test.ts#L1))";
+  const result = reanchor({
+    docPath: "specs/a/spec.md",
+    source,
+    baseSource: source,
+  });
+
+  assert.deepEqual(
+    [result.text, result.tally.reports.unmapped],
+    [
+      source,
+      [
+        'specs/a/spec.md: ../../tests/a.test.ts#L1 -> no test in tests/a.test.ts carries the title "multiplies numbers"',
+      ],
+    ],
+  );
+});
+
+// Re-anchors `source` against a repository holding only `path`, which gained two lines at its top.
+const reanchorWithOnly = (path, source) =>
+  createReanchorer(
+    {
+      workingFile: (candidate) =>
+        candidate === path ? "a\nb\nc\nd\ne\nf\ng\nh\n" : null,
+      hunks: (candidate) =>
+        candidate === path ? [{ oldStart: 0, oldCount: 0, newCount: 2 }] : [],
+      isChanged: (candidate) => candidate === path,
+    },
+    { check: false, all: false },
+  )({ docPath: "specs/a/spec.md", source, baseSource: source });
+
+test("a reanchorer reports a ../ link rotten when no file sits beside the document, though lib/a.ts sits at the root", () => {
+  const source = "One. ([validated by](../lib/a.ts#L6))";
+  const result = reanchorWithOnly("lib/a.ts", source);
+
+  assert.deepEqual(
+    [result.text, result.tally.moved, result.tally.reports.rotten],
+    [
+      source,
+      0,
+      [
+        "specs/a/spec.md: ../lib/a.ts#L6 -> specs/lib/a.ts does not exist in the working tree",
+      ],
+    ],
+  );
+});
+
+test("a reanchorer maps a bare link L6 to L8 through the file beside the document when none sits at the root", () => {
+  const result = reanchorWithOnly(
+    "specs/a/table.ts",
+    "One. ([row](table.ts#L6))",
+  );
+
+  assert.deepEqual(
+    [result.text, result.tally.moved, result.tally.reports.rotten],
+    ["One. ([row](table.ts#L8))", 1, []],
   );
 });
