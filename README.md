@@ -412,9 +412,11 @@ npx re-lint-reanchor --all develop
   `MERGE_HEAD` during an uncommitted merge). Reading the merge-base copy makes
   a second run a no-op. A link the branch added, or whose href it edited by
   hand, is kept as authored.
-- An href is read beside the document (`../../src/a.ts`) or from the repo root
-  (`src/a.ts`); a `../` href with no file beside the document is read from the
-  root as well. A URL is left alone.
+- A `./` or `../` href is read beside the document (`../../src/a.ts`) and a
+  `/` href from the repo root. A bare href (`src/a.ts`) is read from the root,
+  or beside the document when no file sits at the root. A `../` href with no
+  file beside the document is reported as rotten, even when the path exists
+  from the root. A URL is left alone.
 - A cited line the branch deleted or rewrote is reported for a manual fix. An
   anchor on a blank or closing-punctuation line, past the end of its file, or
   into a missing file is reported as rotten. A bare `[L42]` label is synced to

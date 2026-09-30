@@ -58,10 +58,10 @@ test("titleOfLabel names the test of a prefixed or bare label and null for L7 an
   );
 });
 
-test("anchorLinksIn resolves a root href, tries a ../ href beside the document then at the root, and skips a URL", () => {
+test("anchorLinksIn reads a bare href from the root then beside the document, a ./ or ../ href only beside it, a / href only from the root, and skips a URL", () => {
   const [links] = anchorLinksIn(
     [
-      "A. ([validated by](apps/a.test.ts#L3), [b](../lib/b.ts#L4), [c](https://example.test/c.test.ts#L5))",
+      "A. ([validated by](apps/a.test.ts#L3), [b](../lib/b.ts#L4), [c](./c.ts#L5), [d](/src/d.ts#L6), [e](https://example.test/e.test.ts#L7))",
     ],
     "specs/a/spec.md",
   );
@@ -69,8 +69,13 @@ test("anchorLinksIn resolves a root href, tries a ../ href beside the document t
   assert.deepEqual(
     links.map(({ target, candidates }) => ({ target, candidates })),
     [
-      { target: "apps/a.test.ts", candidates: ["apps/a.test.ts"] },
-      { target: "specs/lib/b.ts", candidates: ["specs/lib/b.ts", "lib/b.ts"] },
+      {
+        target: "apps/a.test.ts",
+        candidates: ["apps/a.test.ts", "specs/a/apps/a.test.ts"],
+      },
+      { target: "specs/lib/b.ts", candidates: ["specs/lib/b.ts"] },
+      { target: "specs/a/c.ts", candidates: ["specs/a/c.ts"] },
+      { target: "src/d.ts", candidates: ["src/d.ts"] },
     ],
   );
 });
@@ -183,25 +188,43 @@ test("a reanchorer reports a titled link whose title no test in the cited file c
   );
 });
 
-test("a reanchorer maps a ../ link L6 to L8 through the root copy when no file sits beside the document", () => {
-  const reanchor = createReanchorer(
+// Re-anchors `source` against a repository holding only `path`, which gained two lines at its top.
+const reanchorWithOnly = (path, source) =>
+  createReanchorer(
     {
-      workingFile: (path) =>
-        path === "lib/a.ts" ? "a\nb\nc\nd\ne\nf\ng\nh\n" : null,
-      hunks: () => [{ oldStart: 0, oldCount: 0, newCount: 2 }],
-      isChanged: () => true,
+      workingFile: (candidate) =>
+        candidate === path ? "a\nb\nc\nd\ne\nf\ng\nh\n" : null,
+      hunks: (candidate) =>
+        candidate === path ? [{ oldStart: 0, oldCount: 0, newCount: 2 }] : [],
+      isChanged: (candidate) => candidate === path,
     },
     { check: false, all: false },
-  );
+  )({ docPath: "specs/a/spec.md", source, baseSource: source });
+
+test("a reanchorer reports a ../ link rotten when no file sits beside the document, though lib/a.ts sits at the root", () => {
   const source = "One. ([validated by](../lib/a.ts#L6))";
-  const result = reanchor({
-    docPath: "specs/a/spec.md",
-    source,
-    baseSource: source,
-  });
+  const result = reanchorWithOnly("lib/a.ts", source);
 
   assert.deepEqual(
     [result.text, result.tally.moved, result.tally.reports.rotten],
-    ["One. ([validated by](../lib/a.ts#L8))", 1, []],
+    [
+      source,
+      0,
+      [
+        "specs/a/spec.md: ../lib/a.ts#L6 -> specs/lib/a.ts does not exist in the working tree",
+      ],
+    ],
+  );
+});
+
+test("a reanchorer maps a bare link L6 to L8 through the file beside the document when none sits at the root", () => {
+  const result = reanchorWithOnly(
+    "specs/a/table.ts",
+    "One. ([row](table.ts#L6))",
+  );
+
+  assert.deepEqual(
+    [result.text, result.tally.moved, result.tally.reports.rotten],
+    ["One. ([row](table.ts#L8))", 1, []],
   );
 });

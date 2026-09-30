@@ -599,17 +599,47 @@ describe("re-lint-reanchor", () => {
     assert.equal(read(repo, SPEC_PATH), asSpec(rootLink(7)));
   });
 
-  it("resolves a ../ href at the repo root when nothing sits beside the document, L5 to L7", () => {
-    const shortLink = (line) =>
-      `[validated by subtracts numbers](../tests/Maths.test.ts#L${line})`;
-    const repo = repoWith(asSpec(shortLink(5)));
+  it("reports a ../ href with no file beside the document as rotten and exits 1, though tests/Maths.test.ts sits at the root", () => {
+    const spec = asSpec(
+      "[validated by subtracts numbers](../tests/Maths.test.ts#L5)",
+    );
+    const repo = repoWith(spec);
 
     prependIntro(repo);
     const result = run(repo, "main");
 
     assert.deepEqual(
+      [
+        result.status,
+        result.stderr.split("\n").filter((line) => line.startsWith("rotten")),
+        read(repo, SPEC_PATH),
+      ],
+      [
+        1,
+        [
+          "rotten specs/maths/spec.md: ../tests/Maths.test.ts#L5 -> specs/tests/Maths.test.ts does not exist in the working tree",
+        ],
+        spec,
+      ],
+    );
+  });
+
+  it("maps a bare href to the file beside the document when none sits at the root, table.ts L2 to L4", () => {
+    const siblingLink = (line) => `[row](table.ts#L${line})`;
+    const repo = repoWith(asSpec(siblingLink(2)), MATHS_TEST, {
+      "specs/maths/table.ts": asFile(["one", "two", "three"]),
+    });
+
+    write(
+      repo,
+      "specs/maths/table.ts",
+      asFile(["zero", "half", "one", "two", "three"]),
+    );
+    const result = run(repo, "main");
+
+    assert.deepEqual(
       [result.status, read(repo, SPEC_PATH)],
-      [0, asSpec(shortLink(7))],
+      [0, asSpec(siblingLink(4))],
     );
   });
 

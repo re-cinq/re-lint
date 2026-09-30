@@ -29,7 +29,7 @@ export interface Hunk {
   newCount: number;
 }
 
-/** A `[label](../path#Lnn)` link found in a markdown document. */
+/** A `[label](path#Lnn)` link found in a markdown document. */
 export interface AnchorLink {
   label: string;
   /** The href's path as written, `../` climb included. */
@@ -38,7 +38,7 @@ export interface AnchorLink {
   line: number;
   /** The first of `candidates`: the path the link is paired and reported by. */
   target: string;
-  /** Where the href may point, repo-relative: beside the document for a `../` or `./` href, then at the repo root. */
+  /** Where the href may point, repo-relative, in the order tried: beside the document for a `./` or `../` href, the repo root for a `/` href, the root then beside the document for a bare one. */
   candidates: string[];
   /** The paired merge-base link's line, or null when the branch added the link. */
   baseLine: number | null;
@@ -177,16 +177,22 @@ export function claimsTitle(label: string): boolean {
   return LABEL_PREFIX.test(label.trim()) && titleOfLabel(label) !== null;
 }
 
-// Beside the document for a `../` or `./` href, then the href read from the repo root (specs mix both styles).
+// A `./` or `../` href climbs from the document and a `/` href from the repo root; a bare href is read from the root, as specs write it, then beside the document, as GitHub renders it.
 function candidatePaths(linkPath: string, docPath: string): string[] {
-  const fromRoot = posix.normalize(
-    linkPath.replace(/^(?:\.\.?\/)+/, "").replace(/^\//, ""),
+  const besideDocument = posix.normalize(
+    posix.join(posix.dirname(docPath), linkPath),
   );
-  const besideDocument = /^\.\.?\//.test(linkPath)
-    ? [posix.normalize(posix.join(posix.dirname(docPath), linkPath))]
-    : [];
+  const fromRoot = posix.normalize(linkPath.replace(/^\/+/, ""));
 
-  return [...new Set([...besideDocument, fromRoot])];
+  if (/^\.\.?\//.test(linkPath)) {
+    return [besideDocument];
+  }
+
+  if (linkPath.startsWith("/")) {
+    return [fromRoot];
+  }
+
+  return [...new Set([fromRoot, besideDocument])];
 }
 
 /** Every single-line `it()`/`test()` declaration in a test file's source. */

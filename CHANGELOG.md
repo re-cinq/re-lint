@@ -9,8 +9,8 @@
   its line still mapped.
 - `re-lint-reanchor` reads every link form a consumer's specs use, so it can
   replace a consumer's own copy of this logic: an href written from the repo root
-  (`src/a.test.ts#L3`) beside the `../` form, and a `../` href with no file
-  beside the document read from the root; an `implemented by <title>` label
+  (`src/a.test.ts#L3`) beside the `../` form, and a bare href read beside the
+  document when no file sits at the root; an `implemented by <title>` label
   and a bare `[<title>]` label follow their test like `validated by <title>`
   does, though a bare label naming no test is mapped through the hunks rather
   than reported; a `file.test.ts:NN` label names no test and is kept as
