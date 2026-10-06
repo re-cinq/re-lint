@@ -18,13 +18,13 @@ npm i -D @re-cinq/eslint-plugin-re-lint eslint typescript-eslint
 
 Optional peers, needed only by the rules that use them:
 
-| Peer                       | Needed by                                                                                           |
-| -------------------------- | --------------------------------------------------------------------------------------------------- |
-| `@stylistic/eslint-plugin` | the `recommended` preset's blank-line rules (pass it in; omitted otherwise)                         |
-| `@eslint/markdown`         | the four markdown rules (`require-*`, `no-dead-md-links`), which run under `language: markdown/gfm` |
-| `@eslint/css`              | `prefer-design-tokens`, which runs on stylesheets under `language: css/css`                         |
-| `typescript`               | `no-forwarding-class` (type-aware; needs `parserOptions.projectService`)                            |
-| `jscpd` (5.x)              | `no-duplicate-code`                                                                                 |
+| Peer                       | Needed by                                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `@stylistic/eslint-plugin` | the `recommended` preset's blank-line rules (pass it in; omitted otherwise)                                                    |
+| `@eslint/markdown`         | the five markdown rules (`require-*`, `no-dead-md-links`, `no-ungrounded-spec-name`), which run under `language: markdown/gfm` |
+| `@eslint/css`              | `prefer-design-tokens`, which runs on stylesheets under `language: css/css`                                                    |
+| `typescript`               | `no-forwarding-class` (type-aware; needs `parserOptions.projectService`)                                                       |
+| `jscpd` (5.x)              | `no-duplicate-code`                                                                                                            |
 
 Node 20 or newer, ESLint 9 or newer.
 
@@ -251,18 +251,21 @@ These run on `spec.md` and ADR files under `language: "markdown/gfm"` from
 Every task creates an Issue. ([validated by](src/tasks/create.test.ts#L42))
 ```
 
-| Rule                              | Reports                                                                                                    | Options                                     |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `require-intro-paragraph`         | a document without a lead paragraph between its title and the first section                                | `roots: { spec: ["specs"], adr: ["adrs"] }` |
-| `require-statement-links`         | a testable statement with no `([validated by](...))` link                                                  | `roots`                                     |
-| `require-status-matches-coverage` | a `\| Status \|` row that disagrees with link coverage: none is Draft, some is In Progress, all is Shipped | `roots`                                     |
-| `no-dead-md-links`                | a markdown link to a repository file that does not exist, or a `#Lnn` past the end of the file             |                                             |
+| Rule                              | Reports                                                                                                       | Options                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `require-intro-paragraph`         | a document without a lead paragraph between its title and the first section                                   | `roots: { spec: ["specs"], adr: ["adrs"] }` |
+| `require-statement-links`         | a testable statement with no `([validated by](...))` link                                                     | `roots`                                     |
+| `require-status-matches-coverage` | a `\| Status \|` row that disagrees with link coverage: none is Draft, some is In Progress, all is Shipped    | `roots`                                     |
+| `no-dead-md-links`                | a markdown link to a repository file that does not exist, or a `#Lnn` past the end of the file                |                                             |
+| `no-ungrounded-spec-name`         | a repository path the document names in backticks, or bare in a quoted passage, that is not in the repository | `roots`                                     |
 
-The `specs` preset wires all four, plus `require-spec-link` over test files,
+The `specs` preset wires all five, plus `require-spec-link` over test files,
 the way the repository this package grew out of runs them: the three
 `require-*` document rules over `specs/**/spec.md` and `adrs/**/*.md`
 (`require-statement-links` at `warn`, so a spec still being linked does not
-block the branch), `no-dead-md-links` over every markdown file, and
+block the branch, and `no-ungrounded-spec-name` likewise, since a corpus
+written before the rule names paths that have moved since),
+`no-dead-md-links` over every markdown file, and
 `require-spec-link` at `error`. `@eslint/markdown` is passed in, as
 `typescript-eslint` is to `recommended`:
 
@@ -288,6 +291,7 @@ export default [
       "re-lint/require-intro-paragraph": "error",
       "re-lint/require-statement-links": "warn",
       "re-lint/require-status-matches-coverage": "error",
+      "re-lint/no-ungrounded-spec-name": "warn",
       "re-lint/no-dead-md-links": "error",
     },
   },

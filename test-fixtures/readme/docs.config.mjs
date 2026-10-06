@@ -10,6 +10,7 @@ export default [
       "re-lint/require-intro-paragraph": "error",
       "re-lint/require-statement-links": "warn",
       "re-lint/require-status-matches-coverage": "error",
+      "re-lint/no-ungrounded-spec-name": "warn",
       "re-lint/no-dead-md-links": "error",
     },
   },

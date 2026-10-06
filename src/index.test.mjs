@@ -64,7 +64,7 @@ test("the preset lints a TypeScript file without configuration errors", async ()
   );
 });
 
-test("specs({ markdown }) wires the four document rules over specs and ADRs and require-spec-link over tests", () => {
+test("specs({ markdown }) wires the five document rules over specs and ADRs and require-spec-link over tests", () => {
   const [documents, links, tests] = plugin.configs.specs({ markdown });
 
   assert.deepEqual(
@@ -83,6 +83,7 @@ test("specs({ markdown }) wires the four document rules over specs and ADRs and 
           "re-lint/require-intro-paragraph": "error",
           "re-lint/require-statement-links": "warn",
           "re-lint/require-status-matches-coverage": "error",
+          "re-lint/no-ungrounded-spec-name": "warn",
         },
       },
       {

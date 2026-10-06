@@ -11,3 +11,4 @@ export {
 } from "#spec/spec-status-coverage.js";
 export { linksForStatements, resolveLinkPath } from "#spec/spec-link-parser.js";
 export { isTestFile } from "#spec/test-paths.js";
+export { groundingFindings, namedPaths } from "#spec/grounding.js";
