@@ -12,7 +12,7 @@
   and skips a rejected or retired document. Identifier findings are left to the
   planning line, which has the file contents to judge them. In the `specs` preset
   at `warn`.
-- New `specs` preset: `reLint.configs.specs({ markdown })` wires the four
+- New `specs` preset: `reLint.configs.specs({ markdown })` wires the five
   document rules over `specs/**/spec.md`, `adrs/**/*.md` and every markdown
   file, plus `require-spec-link` over test files, at the severities the
   repository this package grew out of runs them. README § Keeping specs true
