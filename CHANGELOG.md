@@ -2,6 +2,16 @@
 
 ## 1.6.0
 
+- New `no-ungrounded-spec-name`: a repository path a spec or ADR names in
+  backticks, or bare in a quoted passage, must exist. `no-dead-md-links` cannot
+  see these — the house convention writes code paths as inline code precisely so
+  they are not link-checked, which let a spec name a file deleted months before.
+  It vendors the planning line's own grounding parser, keeps that parser's escape
+  hatches (a line saying the change ADDS the path, or a files-touched list naming
+  it), reports a retired component with the hint that says what took its work,
+  and skips a rejected or retired document. Identifier findings are left to the
+  planning line, which has the file contents to judge them. In the `specs` preset
+  at `warn`.
 - New `specs` preset: `reLint.configs.specs({ markdown })` wires the four
   document rules over `specs/**/spec.md`, `adrs/**/*.md` and every markdown
   file, plus `require-spec-link` over test files, at the severities the

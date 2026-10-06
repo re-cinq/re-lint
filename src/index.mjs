@@ -12,6 +12,7 @@ import noClosingBraceComments from "./rules/no-closing-brace-comments.mjs";
 import noCommentedOutCode from "./rules/no-commented-out-code.mjs";
 import noCrossLayerImport from "./rules/no-cross-layer-import.mjs";
 import noDeadMdLinks from "./rules/no-dead-md-links.mjs";
+import noUngroundedSpecName from "./rules/no-ungrounded-spec-name.mjs";
 import noDuplicateCode from "./rules/no-duplicate-code.mjs";
 import noFlagParams from "./rules/no-flag-params.mjs";
 import noForbiddenImports from "./rules/no-forbidden-imports.mjs";
@@ -58,6 +59,7 @@ const rules = {
   "no-commented-out-code": noCommentedOutCode,
   "no-cross-layer-import": noCrossLayerImport,
   "no-dead-md-links": noDeadMdLinks,
+  "no-ungrounded-spec-name": noUngroundedSpecName,
   "no-duplicate-code": noDuplicateCode,
   "no-flag-params": noFlagParams,
   "no-forbidden-imports": noForbiddenImports,
@@ -96,6 +98,7 @@ const rules = {
 export const OPT_IN_RULES = [
   "no-cross-layer-import",
   "no-dead-md-links",
+  "no-ungrounded-spec-name",
   "no-duplicate-code",
   "no-forbidden-imports",
   "no-io-in-view",
@@ -250,6 +253,10 @@ const SPEC_DOCUMENT_RULES = {
   "re-lint/require-intro-paragraph": "error",
   "re-lint/require-statement-links": "warn",
   "re-lint/require-status-matches-coverage": "error",
+  // Warns, not errors: a corpus written before the rule existed names paths that
+  // have moved since, and a repository adopting this should see them before CI
+  // refuses them.
+  "re-lint/no-ungrounded-spec-name": "warn",
 };
 
 function markdownBlock(markdown, name, files, rules) {
