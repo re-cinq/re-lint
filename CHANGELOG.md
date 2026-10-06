@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.7.0
+
+- New opt-in `no-unguarded-async-button` rule: a `<button type="submit">`, or a
+  button whose `onClick` is an async function, with no `disabled` binding is
+  reported, since a second click starts the request again. A handler name is
+  followed in scope to `async function`, `const f = async () =>` and
+  `useCallback(async () => …)`; a spread passes, as it may carry the guard, and
+  `aria-disabled` does not count. `components` adds a consumer's own button
+  components, and `pendingComponent` / `submitComponent` name the house
+  replacement in the message. Syntactic only, so it runs without type
+  information.
+
 ## 1.6.0
 
 - New `no-ungrounded-spec-name`: a repository path a spec or ADR names in
