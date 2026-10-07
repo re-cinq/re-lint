@@ -15,11 +15,20 @@
  * Always exempt: `eslint-*` directive comments — a `} // eslint-disable-line`
  * is an instruction to the linter, not a marker for the reader.
  *
- * Detect-only: shortening the block is judgment.
+ * Autofix removes the comment and the whitespace before it, but only when the
+ * comment is a bare `end …` marker (`end if`, `end describe`, `endif`). Any
+ * other comment (`// Debounce for 300ms`) says something the code does not, so
+ * it is reported and kept. Deleting a marker removes the signpost, not the
+ * cause: shortening the block is still judgment.
  */
 
 const CLOSING_PUNCTUATORS = new Set(["}", ")"]);
 const ESLINT_DIRECTIVE = /^\s*eslint/;
+const END_MARKER = /^\s*end(\s|$)/i;
+
+function isEndMarker(comment) {
+  return END_MARKER.test(comment.value);
+}
 
 function isClosingToken(token) {
   return token?.type === "Punctuator" && CLOSING_PUNCTUATORS.has(token.value);
@@ -62,6 +71,7 @@ function isClosingBraceComment(sourceCode, comment) {
 export default {
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description:
         "Disallow a comment after a closing brace or paren on the same line; a block short enough to read needs no marker",
@@ -88,7 +98,17 @@ export default {
           .filter((comment) => isClosingBraceComment(sourceCode, comment));
 
         for (const comment of flagged) {
-          context.report({ node: comment, messageId: "closingBraceComment" });
+          context.report({
+            node: comment,
+            messageId: "closingBraceComment",
+            fix: isEndMarker(comment)
+              ? (fixer) =>
+                  fixer.removeRange([
+                    sourceCode.getTokenBefore(comment).range[1],
+                    comment.range[1],
+                  ])
+              : undefined,
+          });
         }
       },
     };

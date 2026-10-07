@@ -83,7 +83,7 @@ that only the consumer knows, and report nothing until they get it.
 
 | Rule                       | Reports                                                                                                                                 | Options                                                      | Fix | Preset |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | --- | ------ |
-| `no-nested-if`             | an `if` inside another `if` in the same function; `else if` chains are one level                                                        |                                                              |     | yes    |
+| `no-nested-if`             | an `if` inside another `if` in the same function; `else if` chains are one level                                                        |                                                              | yes | yes    |
 | `no-nested-loop`           | a loop inside another loop in the same function                                                                                         |                                                              |     | yes    |
 | `prefer-early-return`      | a function whose body is one big `if`; inverts it into a guard clause                                                                   |                                                              | yes | yes    |
 | `max-boolean-operators`    | a condition or assignment with more than `max` `&&`/`\|\|` operators; extract a named predicate                                         | `max: 2`                                                     |     | yes    |
@@ -101,22 +101,22 @@ that only the consumer knows, and report nothing until they get it.
 
 ### Functions
 
-| Rule                    | Reports                                                                                                  | Options                                                                              | Fix | Preset                    |
-| ----------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | --- | ------------------------- |
-| `no-flag-params`        | a parameter typed `boolean` or defaulted to `true`/`false`, and a bare `true`/`false` argument at a call | `allowNamed: true` (destructured params and `{ force: true }` objects are not flags) |     | yes                       |
-| `no-prop-mutation`      | assignment into a function's parameters (props, args) instead of returning a new value                   |                                                                                      |     | opt-in (scope to UI code) |
-| `no-forwarding-class`   | a class that only forwards 1:1 to its single injected port; pass the port itself. Type-aware             |                                                                                      |     | yes                       |
-| `require-fetch-timeout` | an outbound `fetch` without a `signal`                                                                   |                                                                                      |     | yes                       |
-| `callee-below-caller`   | a top-level function declared above the function that first calls it                                     | `exportedFirst: true`                                                                |     | yes                       |
-| `declare-near-use`      | a `const`/`let` declared more than `maxDistance` statements before its first use in the same block       | `maxDistance: 5`                                                                     |     | yes                       |
+| Rule                    | Reports                                                                                                  | Options                                                                                     | Fix                     | Preset                    |
+| ----------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------- | ------------------------- |
+| `no-flag-params`        | a parameter typed `boolean` or defaulted to `true`/`false`, and a bare `true`/`false` argument at a call | `allowNamed: true` (destructured params and `{ force: true }` objects are not flags)        |                         | yes                       |
+| `no-prop-mutation`      | assignment into a function's parameters (props, args) instead of returning a new value                   |                                                                                             |                         | opt-in (scope to UI code) |
+| `no-forwarding-class`   | a class that only forwards 1:1 to its single injected port; pass the port itself. Type-aware             |                                                                                             |                         | yes                       |
+| `require-fetch-timeout` | an outbound `fetch` without a `signal`                                                                   | `timeoutMs` (none: report only; set: `--fix` adds `signal: AbortSignal.timeout(timeoutMs)`) | yes (needs `timeoutMs`) | yes                       |
+| `callee-below-caller`   | a top-level function declared above the function that first calls it                                     | `exportedFirst: true`                                                                       |                         | yes                       |
+| `declare-near-use`      | a `const`/`let` declared more than `maxDistance` statements before its first use in the same block       | `maxDistance: 5`                                                                            |                         | yes                       |
 
 ### Comments
 
-| Rule                        | Reports                                                                                     | Options  | Fix | Preset             |
-| --------------------------- | ------------------------------------------------------------------------------------------- | -------- | --- | ------------------ |
-| `max-comment-lines`         | a comment (or run of line comments) longer than `max` lines; `0` bans comments              | `max: 1` |     | yes (`0` in tests) |
-| `no-commented-out-code`     | a comment whose text parses as code; consecutive line comments are one candidate            |          |     | yes                |
-| `no-closing-brace-comments` | `} // end if`, `}); // end describe`: a comment after a closing brace of a multi-line block |          |     | yes                |
+| Rule                        | Reports                                                                                     | Options  | Fix                        | Preset             |
+| --------------------------- | ------------------------------------------------------------------------------------------- | -------- | -------------------------- | ------------------ |
+| `max-comment-lines`         | a comment (or run of line comments) longer than `max` lines; `0` bans comments              | `max: 1` |                            | yes (`0` in tests) |
+| `no-commented-out-code`     | a comment whose text parses as code; consecutive line comments are one candidate            |          |                            | yes                |
+| `no-closing-brace-comments` | `} // end if`, `}); // end describe`: a comment after a closing brace of a multi-line block |          | yes (`end …` markers only) | yes                |
 
 ### Objects and modules
 

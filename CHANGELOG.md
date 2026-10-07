@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.8.0
+
+- `eslint --fix` now resolves three more rules. `no-nested-if` merges an `if`
+  whose whole body is one `if`, neither with an `else`, into `if (a && b)`,
+  parenthesising an operand that binds looser than `&&` and leaving the report
+  unfixed when a comment or sibling statement would be lost.
+  `no-closing-brace-comments` deletes a bare `end …` marker comment and keeps
+  explanatory ones (`// Debounce for 300ms`), which it still reports.
+  `require-fetch-timeout` takes a new `timeoutMs` option and, when it is set,
+  adds `signal: AbortSignal.timeout(timeoutMs)` to the call; without the
+  option, or with options the rule cannot see into (`fetch(url, init)`), it
+  only reports.
+
 ## 1.7.0
 
 - New opt-in `no-unguarded-async-button` rule: a `<button type="submit">`, or a
