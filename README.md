@@ -259,8 +259,8 @@ Every task creates an Issue. ([validated by](src/tasks/create.test.ts#L42))
 | Rule                              | Reports                                                                                                       | Options                                     |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | `require-intro-paragraph`         | a document without a lead paragraph between its title and the first section                                   | `roots: { spec: ["specs"], adr: ["adrs"] }` |
-| `require-statement-links`         | a testable statement with no `([validated by](...))` link                                                     | `roots`                                     |
-| `require-status-matches-coverage` | a `\| Status \|` row that disagrees with link coverage: none is Draft, some is In Progress, all is Shipped    | `roots`                                     |
+| `require-statement-links`         | a testable statement with no `([validated by](...))` link, or whose link points at no test                    | `roots`, `specsRoot: "."`                   |
+| `require-status-matches-coverage` | a `\| Status \|` row that disagrees with link coverage: none is Draft, some is In Progress, all is Shipped    | `roots`, `specsRoot: "."`                   |
 | `no-dead-md-links`                | a markdown link to a repository file that does not exist, or a `#Lnn` past the end of the file                |                                             |
 | `no-ungrounded-spec-name`         | a repository path the document names in backticks, or bare in a quoted passage, that is not in the repository | `roots`                                     |
 
@@ -280,6 +280,23 @@ import reLint from "@re-cinq/eslint-plugin-re-lint";
 
 export default [...reLint.configs.specs({ markdown })];
 ```
+
+A link only counts as coverage when it is evidence: its file exists in the
+repository and its `#Lnn` lands inside an `it()`/`test()` declaration (a link
+with no `#L`, or into a test in a language without `it()`, needs only the
+file). So a `Shipped` row cannot rest on a link to a deleted file or a line
+past every test, and `require-statement-links` names such a statement as
+carrying a link that is not evidence, not as missing one. `specsRoot` sets
+where links resolve from and defaults to the working directory.
+
+`require-status-matches-coverage` fixes its own report by rewriting the status
+row to the one the evidence supports, in both directions: a spec that gained an
+unlinked statement drops from Shipped, and a fully linked Draft is promoted. It
+never edits a link; `re-lint-reanchor` repoints those. A CI job that runs
+`eslint --fix` and commits the result will therefore correct the status for the
+author. To keep the branch red instead, run that fixing pass with the rule off
+(`--rule '{"re-lint/require-status-matches-coverage":"off"}'`) and leave it on
+in the lint job.
 
 Or wire the rules by hand:
 
