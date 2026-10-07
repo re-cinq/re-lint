@@ -15,6 +15,14 @@ export default [
     },
   },
   {
+    files: ["specs/**/*.md", "adrs/**/*.md", ".specify/spec.md"],
+    plugins: { markdown, "re-lint": reLint },
+    language: "markdown/gfm",
+    rules: {
+      "re-lint/no-stale-spec-links": "error",
+    },
+  },
+  {
     files: ["**/*.test.{ts,tsx}"],
     plugins: { "re-lint": reLint },
     rules: {

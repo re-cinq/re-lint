@@ -105,7 +105,7 @@ that only the consumer knows, and report nothing until they get it.
 | ----------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------- | ------------------------- |
 | `no-flag-params`        | a parameter typed `boolean` or defaulted to `true`/`false`, and a bare `true`/`false` argument at a call | `allowNamed: true` (destructured params and `{ force: true }` objects are not flags)        |                         | yes                       |
 | `no-prop-mutation`      | assignment into a function's parameters (props, args) instead of returning a new value                   |                                                                                             |                         | opt-in (scope to UI code) |
-| `no-forwarding-class`   | a class that only forwards 1:1 to its single injected port; pass the port itself. Type-aware             |                                                                                             |                         | yes                       |
+| `no-forwarding-class`   | a class that only forwards 1:1 to its single injected port; pass the port itself. Type-aware             |                                                                                             | yes (call sites only)   | yes                       |
 | `require-fetch-timeout` | an outbound `fetch` without a `signal`                                                                   | `timeoutMs` (none: report only; set: `--fix` adds `signal: AbortSignal.timeout(timeoutMs)`) | yes (needs `timeoutMs`) | yes                       |
 | `callee-below-caller`   | a top-level function declared above the function that first calls it                                     | `exportedFirst: true`                                                                       |                         | yes                       |
 | `declare-near-use`      | a `const`/`let` declared more than `maxDistance` statements before its first use in the same block       | `maxDistance: 5`                                                                            |                         | yes                       |
@@ -256,14 +256,14 @@ These run on `spec.md` and ADR files under `language: "markdown/gfm"` from
 Every task creates an Issue. ([validated by](src/tasks/create.test.ts#L42))
 ```
 
-| Rule                              | Reports                                                                                                       | Options                                     |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `require-intro-paragraph`         | a document without a lead paragraph between its title and the first section                                   | `roots: { spec: ["specs"], adr: ["adrs"] }` |
-| `require-statement-links`         | a testable statement with no `([validated by](...))` link, or whose link points at no test                    | `roots`, `specsRoot: "."`                   |
-| `require-status-matches-coverage` | a `\| Status \|` row that disagrees with link coverage: none is Draft, some is In Progress, all is Shipped    | `roots`, `specsRoot: "."`                   |
-| `no-dead-md-links`                | a markdown link to a repository file that does not exist, or a `#Lnn` past the end of the file                |                                             |
-| `no-stale-spec-links`             | a `[label](path#Lnn)` link whose anchor no longer matches where the branch moved its test (fixable)           | `all: false`, `baseRef: "origin/main"`      |
-| `no-ungrounded-spec-name`         | a repository path the document names in backticks, or bare in a quoted passage, that is not in the repository | `roots`                                     |
+| Rule                              | Reports                                                                                                       | Options                                     | Fix | Preset |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | --- | ------ |
+| `require-intro-paragraph`         | a document without a lead paragraph between its title and the first section                                   | `roots: { spec: ["specs"], adr: ["adrs"] }` |     | yes    |
+| `require-statement-links`         | a testable statement with no `([validated by](...))` link, or whose link points at no test                    | `roots`, `specsRoot: "."`                   |     | yes    |
+| `require-status-matches-coverage` | a `\| Status \|` row that disagrees with link coverage: none is Draft, some is In Progress, all is Shipped    | `roots`, `specsRoot: "."`                   | yes | yes    |
+| `no-dead-md-links`                | a markdown link to a repository file that does not exist, or a `#Lnn` past the end of the file                |                                             |     | yes    |
+| `no-stale-spec-links`             | a `[label](path#Lnn)` link whose anchor no longer matches where the branch moved its test                     | `all: false`, `baseRef: "origin/main"`      | yes | yes    |
+| `no-ungrounded-spec-name`         | a repository path the document names in backticks, or bare in a quoted passage, that is not in the repository | `roots`                                     |     | yes    |
 
 The `specs` preset wires all six, plus `require-spec-link` over test files,
 the way the repository this package grew out of runs them: the three
@@ -271,8 +271,9 @@ the way the repository this package grew out of runs them: the three
 (`require-statement-links` at `warn`, so a spec still being linked does not
 block the branch, and `no-ungrounded-spec-name` likewise, since a corpus
 written before the rule names paths that have moved since),
-`no-dead-md-links` over every markdown file, and
-`require-spec-link` at `error`. `@eslint/markdown` is passed in, as
+`no-dead-md-links` over every markdown file,
+`no-stale-spec-links` at `error` over `specs/**/*.md`, `adrs/**/*.md` and
+`.specify/spec.md`, and `require-spec-link` at `error`. `@eslint/markdown` is passed in, as
 `typescript-eslint` is to `recommended`:
 
 ```js
@@ -317,6 +318,14 @@ export default [
       "re-lint/require-status-matches-coverage": "error",
       "re-lint/no-ungrounded-spec-name": "warn",
       "re-lint/no-dead-md-links": "error",
+    },
+  },
+  {
+    files: ["specs/**/*.md", "adrs/**/*.md", ".specify/spec.md"],
+    plugins: { markdown, "re-lint": reLint },
+    language: "markdown/gfm",
+    rules: {
+      "re-lint/no-stale-spec-links": "error",
     },
   },
   {

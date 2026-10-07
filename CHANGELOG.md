@@ -12,6 +12,19 @@
   adds `signal: AbortSignal.timeout(timeoutMs)` to the call; without the
   option, or with options the rule cannot see into (`fetch(url, init)`), it
   only reports.
+- New `no-stale-spec-links` rule: `--fix` repoints a `[label](path#Lnn)` link
+  whose test the branch moved. It reports nothing without a git work tree or
+  merge base. The `specs` preset wires it at `error` over `specs/**/*.md`,
+  `adrs/**/*.md` and `.specify/spec.md`.
+- A `[validated by]` link counts as coverage only when its file exists and its
+  `#Lnn` lands inside an `it()`/`test()` declaration, including `it.each`,
+  tagged templates and `await test()`; a link written as a URL is trusted.
+  `require-statement-links` now reports such a link as not evidence, apart from
+  a missing one, and `require-status-matches-coverage` fixes the status row in
+  both directions, promoting and demoting.
+- `re-lint-reanchor` and `no-stale-spec-links` share one git module. The status
+  fixer rewrites only the status line, so both fixers apply in a single
+  `eslint --fix` pass.
 
 ## 1.7.0
 
