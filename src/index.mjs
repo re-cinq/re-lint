@@ -12,6 +12,7 @@ import noClosingBraceComments from "./rules/no-closing-brace-comments.mjs";
 import noCommentedOutCode from "./rules/no-commented-out-code.mjs";
 import noCrossLayerImport from "./rules/no-cross-layer-import.mjs";
 import noDeadMdLinks from "./rules/no-dead-md-links.mjs";
+import noStaleSpecLinks from "./rules/no-stale-spec-links.mjs";
 import noUngroundedSpecName from "./rules/no-ungrounded-spec-name.mjs";
 import noDuplicateCode from "./rules/no-duplicate-code.mjs";
 import noFlagParams from "./rules/no-flag-params.mjs";
@@ -60,6 +61,7 @@ const rules = {
   "no-commented-out-code": noCommentedOutCode,
   "no-cross-layer-import": noCrossLayerImport,
   "no-dead-md-links": noDeadMdLinks,
+  "no-stale-spec-links": noStaleSpecLinks,
   "no-ungrounded-spec-name": noUngroundedSpecName,
   "no-duplicate-code": noDuplicateCode,
   "no-flag-params": noFlagParams,
@@ -100,6 +102,7 @@ const rules = {
 export const OPT_IN_RULES = [
   "no-cross-layer-import",
   "no-dead-md-links",
+  "no-stale-spec-links",
   "no-ungrounded-spec-name",
   "no-duplicate-code",
   "no-forbidden-imports",
@@ -294,6 +297,12 @@ function specs({ markdown } = {}) {
     markdownBlock(markdown, "specs-links", ["**/*.md"], {
       "re-lint/no-dead-md-links": "error",
     }),
+    markdownBlock(
+      markdown,
+      "specs-anchors",
+      ["specs/**/*.md", "adrs/**/*.md", ".specify/spec.md"],
+      { "re-lint/no-stale-spec-links": "error" },
+    ),
     {
       name: "re-lint/specs-tests",
       files: ["**/*.{test,spec}.{ts,tsx,mts,js,jsx,mjs}"],

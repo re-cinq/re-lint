@@ -15,13 +15,15 @@ import {
   coverageTier,
   expectedStatus,
   parseDocStatus,
+  rewriteAdrStatusRow,
+  rewriteSpecStatusRow,
   statementCoverage,
   statusTier,
 } from "./spec-parsers.mjs";
 
 /**
  * @typedef {{ reason: "untagged", line: number }} UntaggedMismatch
- * @typedef {{ reason: "tier", expected: string, actual: string, testable: number, linked: number, line: number }} TierMismatch
+ * @typedef {{ reason: "tier", expected: string, actual: string, testable: number, linked: number, ungrounded: number, line: number }} TierMismatch
  */
 
 /**
@@ -59,9 +61,10 @@ function statusLine(content, kind) {
 /**
  * @param {string} content markdown body of a spec.md / ADR file
  * @param {"spec" | "adr"} kind
+ * @param {{ isGroundedLink?: (link: { path: string, line: number | null }) => boolean }} [options] which links count as evidence; every link does by default
  * @returns {UntaggedMismatch | TierMismatch | null} null when the doc is consistent or skipped
  */
-export function statusMismatch(content, kind) {
+export function statusMismatch(content, kind, options) {
   const { status } = parseDocStatus(content, kind);
 
   if (statusTier(status) === "skip") {
@@ -72,12 +75,32 @@ export function statusMismatch(content, kind) {
   if (status === null) {
     return { reason: "untagged", line };
   }
-  const { testable, linked } = statementCoverage(content);
+  const { testable, linked, ungrounded } = statementCoverage(content, options);
   const expected = expectedStatus(coverageTier(testable, linked));
 
   if (expected === null || expected === status) {
     return null;
   }
 
-  return { reason: "tier", expected, actual: status, testable, linked, line };
+  return {
+    reason: "tier",
+    expected,
+    actual: status,
+    testable,
+    linked,
+    ungrounded: ungrounded.length,
+    line,
+  };
+}
+
+/**
+ * The doc with its declared status rewritten to `label`, or null when it
+ * declares none. A shipped spec is rewritable: demoting it is the point.
+ *
+ * @param {"spec" | "adr"} kind
+ */
+export function withStatusLabel(content, kind, label) {
+  return kind === "spec"
+    ? rewriteSpecStatusRow(content, label, { allowTerminal: true })
+    : rewriteAdrStatusRow(content, label);
 }

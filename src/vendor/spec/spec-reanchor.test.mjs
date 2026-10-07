@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 import {
   anchorLinksIn,
   createReanchorer,
+  declarationSpans,
   findTestDeclarations,
   mapLine,
   pairWithBase,
   parseHunks,
   rottenReason,
   selectCorpus,
+  spansCover,
   syncedLabel,
   titleOfLabel,
 } from "#spec/spec-reanchor.js";
@@ -227,4 +229,73 @@ test("a reanchorer maps a bare link L6 to L8 through the file beside the documen
     [result.text, result.tally.moved, result.tally.reports.rotten],
     ["One. ([row](table.ts#L8))", 1, []],
   );
+});
+
+const SPAN_SOURCE = [
+  'describe("suite", () => {',
+  '  it("first", () => {',
+  "    expect(1).toBe(1);",
+  "  });",
+  "  it.each([1, 2])(",
+  '    "second %s",',
+  "    () => {},",
+  "  );",
+  "  it.concurrent.each`a | b`(",
+  '    "third",',
+  "    () => {},",
+  "  );",
+  "  await test.skip(",
+  '    "fourth",',
+  "    () => {},",
+  "  );",
+  '  it[cond ? "skip" : "only"]("fifth", () => {});',
+  "});",
+].join("\n");
+
+test("declarationSpans opens a span at each it/test line, whatever its modifier chain, and ends it before the next", () => {
+  assert.deepEqual(declarationSpans(SPAN_SOURCE), [
+    { start: 2, end: 5 },
+    { start: 5, end: 9 },
+    { start: 9, end: 13 },
+    { start: 13, end: 17 },
+    { start: 17, end: 19 },
+  ]);
+});
+
+test("declarationSpans ends the last test before a following describe", () => {
+  const source = ['it("a", () => {});', "", 'describe("b", () => {});'].join(
+    "\n",
+  );
+
+  assert.deepEqual(declarationSpans(source), [{ start: 1, end: 3 }]);
+});
+
+test("declarationSpans stops the last test at the end of the file, so L99 is no evidence", () => {
+  const spans = declarationSpans('it("a", () => {\n  expect(1).toBe(1);\n});');
+
+  assert.deepEqual(
+    [spans, spansCover(spans, 99)],
+    [[{ start: 1, end: 4 }], false],
+  );
+});
+
+test("declarationSpans is empty for a file that declares no test", () => {
+  assert.deepEqual(declarationSpans("expect(it).toBe(1);\nconst a = 1;"), []);
+});
+
+test("spansCover lands L3 and L5 in a span and L1 and L9 outside it", () => {
+  const spans = [{ start: 2, end: 6 }];
+
+  assert.deepEqual(
+    [1, 3, 5, 6, 9].map((line) => spansCover(spans, line)),
+    [false, true, true, false, false],
+  );
+});
+
+test("findTestDeclarations reads the title of an it.each call", () => {
+  const source = 'it.each([1, 2])("adds %s", () => {});';
+
+  assert.deepEqual(findTestDeclarations(source), [
+    { title: "adds %s", line: 1 },
+  ]);
 });

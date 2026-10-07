@@ -14,8 +14,15 @@ export const DEFAULT_TEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 // A `[label](path#Lnn)` link whose path is relative, so a URL's scheme rules it out.
 const ANCHOR_LINK =
   /\[([^\]]*)\]\(((?![A-Za-z][A-Za-z0-9+.-]*:)[^)#\s]+)#L(\d+)\)/g;
-const DECLARATION =
-  /^\s*(?:it|test)(?:\.(?:only|skip|todo|concurrent|sequential|fails))?\s*\(\s*(['"`])((?:\\.|(?!\1).)*)\1/;
+const CALL_PREFIX =
+  "^\\s*(?:await\\s+)?(?:it|test)(?:\\.[A-Za-z_$][\\w$]*|\\[[^\\]]*\\])*";
+const EACH_TABLE = "(?:\\((?:[^()]|\\([^()]*\\))*\\)|`[^`]*`)";
+const DECLARATION = new RegExp(
+  `${CALL_PREFIX}\\s*${EACH_TABLE}?\\s*\\(\\s*(['"\`])((?:\\\\.|(?!\\1).)*)\\1`,
+);
+const TEST_OPENING = new RegExp(`${CALL_PREFIX}\\s*(?:\\(|\`)`);
+const SUITE_OPENING =
+  /^\s*(?:describe|suite)(?:\.[A-Za-z_$][\w$]*)*\s*(?:\(|`)/;
 const LABEL_PREFIX = /^(?:validated|implemented) by(?:\s+|$)/;
 const BASENAME_LABEL = /^[^`\s/]+\.(?:test|spec)\.[cm]?[jt]sx?:\d+$/;
 const LINE_LABEL = /^L\d+$/;
@@ -42,6 +49,12 @@ export interface AnchorLink {
   candidates: string[];
   /** The paired merge-base link's line, or null when the branch added the link. */
   baseLine: number | null;
+}
+
+/** The lines a test declaration owns: from its opening line up to, not including, the next test or suite opening. */
+export interface DeclarationSpan {
+  start: number;
+  end: number;
 }
 
 /** A test declaration: its normalised title and 1-based line. */
@@ -209,6 +222,39 @@ export function findTestDeclarations(source: string): TestDeclaration[] {
         ]
       : [];
   });
+}
+
+/**
+ * The span of every `it()`/`test()` opening line, `it.each` and tagged-template forms included.
+ * Braces are never counted: a span runs to the next test or `describe` opening, so an anchor on a
+ * helper between two tests lands in the earlier one.
+ */
+export function declarationSpans(source: string): DeclarationSpan[] {
+  const sourceLines = lines(source);
+  const openings = sourceLines.flatMap((text, index) =>
+    TEST_OPENING.test(text) || SUITE_OPENING.test(text)
+      ? [{ line: index + 1, isTest: TEST_OPENING.test(text) }]
+      : [],
+  );
+
+  return openings.flatMap((opening, index) =>
+    opening.isTest
+      ? [
+          {
+            start: opening.line,
+            end: openings[index + 1]?.line ?? sourceLines.length + 1,
+          },
+        ]
+      : [],
+  );
+}
+
+/** Whether `line` falls inside any of the spans. */
+export function spansCover(
+  spans: readonly DeclarationSpan[],
+  line: number,
+): boolean {
+  return spans.some((span) => line >= span.start && line < span.end);
 }
 
 /** The anchor links on each line of a document, one array per line. */
@@ -436,17 +482,22 @@ export function createReanchorer(
   options: ReanchorOptions,
 ): (document: ReanchorDocument) => ReanchorResult {
   const testFilePattern = options.testFilePattern ?? DEFAULT_TEST_FILE_PATTERN;
-  const declarationCache = new Map<string, TestDeclaration[]>();
+  const sourceCache = new Map<
+    string,
+    { declarations: TestDeclaration[]; spans: DeclarationSpan[] }
+  >();
 
-  const declarationsIn = (path: string): TestDeclaration[] => {
-    if (!declarationCache.has(path)) {
-      declarationCache.set(
-        path,
-        findTestDeclarations(repository.workingFile(path) ?? ""),
-      );
+  const declarationsIn = (path: string) => {
+    if (!sourceCache.has(path)) {
+      const source = repository.workingFile(path) ?? "";
+
+      sourceCache.set(path, {
+        declarations: findTestDeclarations(source),
+        spans: declarationSpans(source),
+      });
     }
 
-    return declarationCache.get(path) ?? [];
+    return sourceCache.get(path) ?? { declarations: [], spans: [] };
   };
 
   const byHunks = (link: AnchorLink): Resolution => {
@@ -483,7 +534,7 @@ export function createReanchorer(
     if (title === null || !testFilePattern.test(link.target)) {
       return null;
     }
-    const declarations = declarationsIn(link.target);
+    const { declarations, spans } = declarationsIn(link.target);
     const matches = declarations.filter(
       (declaration) => declaration.title === title,
     );
@@ -497,9 +548,8 @@ export function createReanchorer(
         ? { failure: `no test in ${link.target} carries the title "${title}"` }
         : null;
     }
-    const index = declarations.indexOf(matches[0]);
     const start = matches[0].line;
-    const end = declarations[index + 1]?.line ?? Infinity;
+    const end = spans.find((span) => span.start === start)?.end ?? Infinity;
     const intended = intendedLine(byHunks(link), link.line, start);
 
     return { line: intended >= start && intended < end ? intended : start };

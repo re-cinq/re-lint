@@ -64,16 +64,18 @@ test("the preset lints a TypeScript file without configuration errors", async ()
   );
 });
 
-test("specs({ markdown }) wires the five document rules over specs and ADRs and require-spec-link over tests", () => {
-  const [documents, links, tests] = plugin.configs.specs({ markdown });
+test("specs({ markdown }) wires the five document rules over specs and ADRs, the anchor rule over spec markdown and require-spec-link over tests", () => {
+  const [documents, links, anchors, tests] = plugin.configs.specs({ markdown });
 
   assert.deepEqual(
-    [documents, links, tests].map(({ files, language, plugins, rules }) => ({
-      files,
-      language,
-      plugins: Object.keys(plugins),
-      rules,
-    })),
+    [documents, links, anchors, tests].map(
+      ({ files, language, plugins, rules }) => ({
+        files,
+        language,
+        plugins: Object.keys(plugins),
+        rules,
+      }),
+    ),
     [
       {
         files: ["specs/**/spec.md", "adrs/**/*.md"],
@@ -91,6 +93,12 @@ test("specs({ markdown }) wires the five document rules over specs and ADRs and 
         language: "markdown/gfm",
         plugins: ["markdown", "re-lint"],
         rules: { "re-lint/no-dead-md-links": "error" },
+      },
+      {
+        files: ["specs/**/*.md", "adrs/**/*.md", ".specify/spec.md"],
+        language: "markdown/gfm",
+        plugins: ["markdown", "re-lint"],
+        rules: { "re-lint/no-stale-spec-links": "error" },
       },
       {
         files: ["**/*.{test,spec}.{ts,tsx,mts,js,jsx,mjs}"],

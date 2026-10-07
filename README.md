@@ -18,13 +18,13 @@ npm i -D @re-cinq/eslint-plugin-re-lint eslint typescript-eslint
 
 Optional peers, needed only by the rules that use them:
 
-| Peer                       | Needed by                                                                                                                      |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `@stylistic/eslint-plugin` | the `recommended` preset's blank-line rules (pass it in; omitted otherwise)                                                    |
-| `@eslint/markdown`         | the five markdown rules (`require-*`, `no-dead-md-links`, `no-ungrounded-spec-name`), which run under `language: markdown/gfm` |
-| `@eslint/css`              | `prefer-design-tokens`, which runs on stylesheets under `language: css/css`                                                    |
-| `typescript`               | `no-forwarding-class` (type-aware; needs `parserOptions.projectService`)                                                       |
-| `jscpd` (5.x)              | `no-duplicate-code`                                                                                                            |
+| Peer                       | Needed by                                                                                                                                            |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@stylistic/eslint-plugin` | the `recommended` preset's blank-line rules (pass it in; omitted otherwise)                                                                          |
+| `@eslint/markdown`         | the six markdown rules (`require-*`, `no-dead-md-links`, `no-stale-spec-links`, `no-ungrounded-spec-name`), which run under `language: markdown/gfm` |
+| `@eslint/css`              | `prefer-design-tokens`, which runs on stylesheets under `language: css/css`                                                                          |
+| `typescript`               | `no-forwarding-class` (type-aware; needs `parserOptions.projectService`)                                                                             |
+| `jscpd` (5.x)              | `no-duplicate-code`                                                                                                                                  |
 
 Node 20 or newer, ESLint 9 or newer.
 
@@ -259,12 +259,13 @@ Every task creates an Issue. ([validated by](src/tasks/create.test.ts#L42))
 | Rule                              | Reports                                                                                                       | Options                                     |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | `require-intro-paragraph`         | a document without a lead paragraph between its title and the first section                                   | `roots: { spec: ["specs"], adr: ["adrs"] }` |
-| `require-statement-links`         | a testable statement with no `([validated by](...))` link                                                     | `roots`                                     |
-| `require-status-matches-coverage` | a `\| Status \|` row that disagrees with link coverage: none is Draft, some is In Progress, all is Shipped    | `roots`                                     |
+| `require-statement-links`         | a testable statement with no `([validated by](...))` link, or whose link points at no test                    | `roots`, `specsRoot: "."`                   |
+| `require-status-matches-coverage` | a `\| Status \|` row that disagrees with link coverage: none is Draft, some is In Progress, all is Shipped    | `roots`, `specsRoot: "."`                   |
 | `no-dead-md-links`                | a markdown link to a repository file that does not exist, or a `#Lnn` past the end of the file                |                                             |
+| `no-stale-spec-links`             | a `[label](path#Lnn)` link whose anchor no longer matches where the branch moved its test (fixable)           | `all: false`, `baseRef: "origin/main"`      |
 | `no-ungrounded-spec-name`         | a repository path the document names in backticks, or bare in a quoted passage, that is not in the repository | `roots`                                     |
 
-The `specs` preset wires all five, plus `require-spec-link` over test files,
+The `specs` preset wires all six, plus `require-spec-link` over test files,
 the way the repository this package grew out of runs them: the three
 `require-*` document rules over `specs/**/spec.md` and `adrs/**/*.md`
 (`require-statement-links` at `warn`, so a spec still being linked does not
@@ -280,6 +281,24 @@ import reLint from "@re-cinq/eslint-plugin-re-lint";
 
 export default [...reLint.configs.specs({ markdown })];
 ```
+
+A link only counts as coverage when it is evidence: its file exists in the
+repository and its `#Lnn` lands inside an `it()`/`test()` declaration (a link
+with no `#L`, or into a test in a language without `it()`, needs only the
+file; a link written as a URL, to another repository's test, cannot be
+checked here and counts as written). So a `Shipped` row cannot rest on a
+link to a deleted file or a line past every test, and `require-statement-links` names such a statement as
+carrying a link that is not evidence, not as missing one. `specsRoot` sets
+where links resolve from and defaults to the working directory.
+
+`require-status-matches-coverage` fixes its own report by rewriting the status
+row to the one the evidence supports, in both directions: a spec that gained an
+unlinked statement drops from Shipped, and a fully linked Draft is promoted. It
+never edits a link; `re-lint-reanchor` repoints those. A CI job that runs
+`eslint --fix` and commits the result will therefore correct the status for the
+author. To keep the branch red instead, run that fixing pass with the rule off
+(`--rule '{"re-lint/require-status-matches-coverage":"off"}'`) and leave it on
+in the lint job.
 
 Or wire the rules by hand:
 
@@ -416,7 +435,11 @@ export default [
 
 A `#L42` link in a spec drifts the moment its cited file gains or loses a line
 above it. The `re-lint-reanchor` command heals those links from git, with no
-content search:
+content search. The same logic runs inside ESLint as `no-stale-spec-links`, so
+`eslint --fix` repoints the links and a plain `eslint` fails the branch that
+left them stale; with no git work tree or merge base that rule reports
+nothing. It repoints only: an unmapped or rotten link is for the command's
+`--check` run.
 
 ```sh
 npx re-lint-reanchor            # rewrite drifted links against origin/main

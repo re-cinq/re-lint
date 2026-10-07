@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { statusMismatch } from "./status-coverage.mjs";
+import { statusMismatch, withStatusLabel } from "./status-coverage.mjs";
 
 const LINK = "([validated by](payments.test.ts#L10))";
 
@@ -108,6 +108,7 @@ test("expects draft when a Shipped spec has no linked statements", () => {
     actual: "shipped",
     testable: 2,
     linked: 0,
+    ungrounded: 0,
     line: 7,
   });
 });
@@ -119,6 +120,7 @@ test("expects in-progress when a Draft spec has one of two statements linked", (
     actual: "draft",
     testable: 2,
     linked: 1,
+    ungrounded: 0,
     line: 7,
   });
 });
@@ -130,6 +132,7 @@ test("expects in-progress when a Shipped spec has one of two statements linked",
     actual: "shipped",
     testable: 2,
     linked: 1,
+    ungrounded: 0,
     line: 7,
   });
 });
@@ -143,6 +146,7 @@ test("expects shipped when a Draft spec has every statement linked", () => {
       actual: "draft",
       testable: 2,
       linked: 2,
+      ungrounded: 0,
       line: 7,
     },
   );
@@ -181,6 +185,7 @@ test("expects draft when a shipped ADR has no linked statements", () => {
     actual: "shipped",
     testable: 1,
     linked: 0,
+    ungrounded: 0,
     line: 2,
   });
 });
@@ -202,4 +207,57 @@ test("reports untagged at line 1 when an ADR has a status table instead of front
     reason: "untagged",
     line: 1,
   });
+});
+
+const onlyLineTen = (link) => link.line === 10;
+const HOLLOW = "([validated by](payments.test.ts#L99))";
+const hollowSecond = (content) =>
+  content.replace("to the payer.", `to the payer. ${HOLLOW}`);
+
+test("expects in-progress and counts one ungrounded when a Shipped spec has a link at L99 on its second statement", () => {
+  assert.deepEqual(
+    statusMismatch(hollowSecond(linkFirst(spec("Shipped"))), "spec", {
+      isGroundedLink: onlyLineTen,
+    }),
+    {
+      reason: "tier",
+      expected: "in-progress",
+      actual: "shipped",
+      testable: 2,
+      linked: 1,
+      ungrounded: 1,
+      line: 7,
+    },
+  );
+});
+
+test("returns null when a Shipped spec has a link at L99 and no predicate is given", () => {
+  assert.equal(
+    statusMismatch(hollowSecond(linkFirst(spec("Shipped"))), "spec"),
+    null,
+  );
+});
+
+test("returns null when an In Progress spec has a link at L99 on its second statement", () => {
+  assert.equal(
+    statusMismatch(hollowSecond(linkFirst(spec("In Progress"))), "spec", {
+      isGroundedLink: onlyLineTen,
+    }),
+    null,
+  );
+});
+
+test("withStatusLabel rewrites a Shipped spec row to In Progress and nothing else", () => {
+  assert.equal(
+    withStatusLabel(spec("Shipped"), "spec", "In Progress"),
+    spec("In Progress"),
+  );
+});
+
+test("withStatusLabel rewrites a shipped ADR frontmatter value to draft", () => {
+  assert.equal(withStatusLabel(adr("shipped"), "adr", "draft"), adr("draft"));
+});
+
+test("withStatusLabel returns null when a spec has no status row", () => {
+  assert.equal(withStatusLabel(specNoStatusRow, "spec", "Draft"), null);
 });

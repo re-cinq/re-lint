@@ -1,6 +1,21 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { RuleTester } from "eslint";
 import markdown from "@eslint/markdown";
 import rule from "./require-statement-links.mjs";
+
+const FIXTURES = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "test-fixtures",
+  "require-status-matches-coverage",
+);
+
+const grounded = (testCase) => ({
+  ...testCase,
+  options: [{ specsRoot: FIXTURES, ...testCase.options?.[0] }],
+});
 
 const ruleTester = new RuleTester({
   plugins: { markdown },
@@ -75,6 +90,16 @@ const supersededAdrUnlinked = acceptedAdrUnlinked.replace(
   "superseded",
 );
 
+const shippedHollow = shippedUnlinked.replace(
+  "for every payment.",
+  "for every payment. ([validated by](tests/gone.test.ts#L1))",
+);
+
+const shippedPastEveryTest = shippedUnlinked.replace(
+  "for every payment.",
+  "for every payment. ([validated by](tests/grounded.test.ts#L99))",
+);
+
 // A rejected spec / superseded ADR is skipped; every other status warns.
 ruleTester.run("require-statement-links", rule, {
   valid: [
@@ -84,6 +109,14 @@ ruleTester.run("require-statement-links", rule, {
     // fully linked, nothing to flag
     { code: draftLinked, filename: "specs/my-feature/spec.md" },
     { code: shippedLinked, filename: "specs/my-feature/spec.md" },
+    // a link into a real test is evidence even from a nested spec directory
+    {
+      code: shippedUnlinked.replace(
+        "for every payment.",
+        "for every payment. ([validated by](../../tests/grounded.test.ts#L3))",
+      ),
+      filename: path.join(FIXTURES, "specs/payments/spec.md"),
+    },
     // every statement is intro/narrative (heuristic exempts them)
     { code: shippedNarrativeOnly, filename: "specs/my-feature/spec.md" },
     // outside specs/ and adrs/ the rule does not apply
@@ -94,7 +127,7 @@ ruleTester.run("require-statement-links", rule, {
       filename: "specs/my-feature/spec.md",
       options: [{ roots: { spec: ["docs/features"], adr: ["decisions"] } }],
     },
-  ],
+  ].map(grounded),
   invalid: [
     {
       code: shippedUnlinked,
@@ -122,5 +155,16 @@ ruleTester.run("require-statement-links", rule, {
       filename: "adrs/ADR-1.md",
       errors: [{ messageId: "unlinkedStatement", line: 11 }],
     },
-  ],
+    // a link that holds nothing is named as such, not as a missing link
+    {
+      code: shippedHollow,
+      filename: "specs/my-feature/spec.md",
+      errors: [{ messageId: "ungroundedStatement", line: 11 }],
+    },
+    {
+      code: shippedPastEveryTest,
+      filename: "specs/my-feature/spec.md",
+      errors: [{ messageId: "ungroundedStatement", line: 11 }],
+    },
+  ].map(grounded),
 });
