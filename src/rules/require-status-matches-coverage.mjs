@@ -25,7 +25,7 @@
  * file that is gone or a line that is past every test.
  *
  * Carries a `fix` that rewrites the status row to the one the evidence
- * supports (`withStatusLabel`), in both directions. It never edits a link: the
+ * supports (`withStatusLabel`), in both directions, touching only that line. It never edits a link: the
  * stale ones are for `re-lint-reanchor`, or a human, to repoint. A CI job that
  * runs `eslint --fix` and commits the result will therefore rewrite statuses
  * for the author; run that pass with this rule off to keep the PR red instead.
@@ -34,6 +34,7 @@
 import { statusLabel } from "./lib/spec-parsers.mjs";
 import { DOC_ROOTS_SCHEMA, docKind } from "./lib/doc-kind.mjs";
 import { statusMismatch, withStatusLabel } from "./lib/status-coverage.mjs";
+import { lineRange } from "./lib/line-range.mjs";
 import { groundingFor } from "./lib/test-evidence.mjs";
 
 const CORPUS = { spec: "spec", adr: "ADR" };
@@ -43,13 +44,16 @@ const REQUIREMENT = {
   adr: "Add `status: draft` to the YAML frontmatter (one of draft / in progress / shipped / rejected / retired).",
 };
 
-function statusFix(text, kind, expected) {
+function statusFix(text, kind, mismatch, expected) {
   return (fixer) => {
     const rewritten = withStatusLabel(text, kind, expected);
 
     return rewritten === null
       ? null
-      : fixer.replaceTextRange([0, text.length], rewritten);
+      : fixer.replaceTextRange(
+          lineRange(text, mismatch.line),
+          rewritten.split("\n")[mismatch.line - 1].replace(/\r$/, ""),
+        );
   };
 }
 
@@ -71,7 +75,7 @@ function mismatchReport(mismatch, kind, text) {
     linked: mismatch.linked,
     testable: mismatch.testable,
   };
-  const fix = statusFix(text, kind, expected);
+  const fix = statusFix(text, kind, mismatch, expected);
 
   return mismatch.ungrounded > 0
     ? {
