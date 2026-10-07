@@ -80,3 +80,13 @@ test("groundedLinkPredicate answers like isGroundedLink for the bound spec", () 
     [true, false],
   );
 });
+
+test("grounds a link to another repository's test by URL, which this checkout cannot verify", () => {
+  assert.equal(
+    groundedAt(
+      "https://github.com/re-cinq/re-lint/blob/v1.0.0/src/rules/lib/status-coverage.test.mjs",
+      104,
+    ),
+    true,
+  );
+});

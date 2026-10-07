@@ -285,8 +285,9 @@ export default [...reLint.configs.specs({ markdown })];
 A link only counts as coverage when it is evidence: its file exists in the
 repository and its `#Lnn` lands inside an `it()`/`test()` declaration (a link
 with no `#L`, or into a test in a language without `it()`, needs only the
-file). So a `Shipped` row cannot rest on a link to a deleted file or a line
-past every test, and `require-statement-links` names such a statement as
+file; a link written as a URL, to another repository's test, cannot be
+checked here and counts as written). So a `Shipped` row cannot rest on a
+link to a deleted file or a line past every test, and `require-statement-links` names such a statement as
 carrying a link that is not evidence, not as missing one. `specsRoot` sets
 where links resolve from and defaults to the working directory.
 

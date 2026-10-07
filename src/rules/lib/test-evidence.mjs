@@ -8,7 +8,8 @@
  * the same scan `re-lint-reanchor` relocates links with, so the two cannot
  * disagree about where a test begins). A whole-file link needs only the file,
  * and so does a test in a language with no `it()` to scan (`_test.go`,
- * `test_*.py`). Nothing here runs a test: CI already fails a red PR.
+ * `test_*.py`). A link to another repository's test, written as a URL, cannot be
+ * checked from this checkout and is trusted, as every link was before. Nothing here runs a test: CI already fails a red PR.
  *
  * Filesystem work lives here, not in the vendored parsers, which stay runnable
  * where there is no checkout.
@@ -38,6 +39,8 @@ const SCANNABLE_EXTENSIONS = new Set([
   ".cjs",
 ]);
 
+const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+
 const spansByFile = new Map();
 
 function spansOf(file) {
@@ -61,6 +64,9 @@ function fileInRepo(root, repoPath) {
  * @param {{ root: string, specPath: string }} where root = repo root, specPath = repo-relative path of the linking document
  */
 export function isGroundedLink(link, { root, specPath }) {
+  if (URL_SCHEME.test(link.path)) {
+    return true;
+  }
   const file = fileInRepo(resolve(root), resolveLinkPath(link.path, specPath));
 
   if (file === null) {
