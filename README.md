@@ -112,11 +112,11 @@ that only the consumer knows, and report nothing until they get it.
 
 ### Comments
 
-| Rule                        | Reports                                                                                     | Options  | Fix | Preset             |
-| --------------------------- | ------------------------------------------------------------------------------------------- | -------- | --- | ------------------ |
-| `max-comment-lines`         | a comment (or run of line comments) longer than `max` lines; `0` bans comments              | `max: 1` |     | yes (`0` in tests) |
-| `no-commented-out-code`     | a comment whose text parses as code; consecutive line comments are one candidate            |          |     | yes                |
-| `no-closing-brace-comments` | `} // end if`, `}); // end describe`: a comment after a closing brace of a multi-line block |          | yes | yes                |
+| Rule                        | Reports                                                                                     | Options  | Fix                        | Preset             |
+| --------------------------- | ------------------------------------------------------------------------------------------- | -------- | -------------------------- | ------------------ |
+| `max-comment-lines`         | a comment (or run of line comments) longer than `max` lines; `0` bans comments              | `max: 1` |                            | yes (`0` in tests) |
+| `no-commented-out-code`     | a comment whose text parses as code; consecutive line comments are one candidate            |          |                            | yes                |
+| `no-closing-brace-comments` | `} // end if`, `}); // end describe`: a comment after a closing brace of a multi-line block |          | yes (`end …` markers only) | yes                |
 
 ### Objects and modules
 

@@ -6,10 +6,12 @@
   whose whole body is one `if`, neither with an `else`, into `if (a && b)`,
   parenthesising an operand that binds looser than `&&` and leaving the report
   unfixed when a comment or sibling statement would be lost.
-  `no-closing-brace-comments` deletes the marker comment. `require-fetch-timeout`
-  takes a new `timeoutMs` option and, when it is set, adds
-  `signal: AbortSignal.timeout(timeoutMs)` to the call; without the option, or
-  with options the rule cannot see into (`fetch(url, init)`), it only reports.
+  `no-closing-brace-comments` deletes a bare `end …` marker comment and keeps
+  explanatory ones (`// Debounce for 300ms`), which it still reports.
+  `require-fetch-timeout` takes a new `timeoutMs` option and, when it is set,
+  adds `signal: AbortSignal.timeout(timeoutMs)` to the call; without the
+  option, or with options the rule cannot see into (`fetch(url, init)`), it
+  only reports.
 
 ## 1.7.0
 

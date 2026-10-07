@@ -15,12 +15,20 @@
  * Always exempt: `eslint-*` directive comments — a `} // eslint-disable-line`
  * is an instruction to the linter, not a marker for the reader.
  *
- * Autofix removes the comment and the whitespace before it. That deletes the
- * signpost, not the cause: shortening the block is still judgment.
+ * Autofix removes the comment and the whitespace before it, but only when the
+ * comment is a bare `end …` marker (`end if`, `end describe`, `endif`). Any
+ * other comment (`// Debounce for 300ms`) says something the code does not, so
+ * it is reported and kept. Deleting a marker removes the signpost, not the
+ * cause: shortening the block is still judgment.
  */
 
 const CLOSING_PUNCTUATORS = new Set(["}", ")"]);
 const ESLINT_DIRECTIVE = /^\s*eslint/;
+const END_MARKER = /^\s*end(\s|$)/i;
+
+function isEndMarker(comment) {
+  return END_MARKER.test(comment.value);
+}
 
 function isClosingToken(token) {
   return token?.type === "Punctuator" && CLOSING_PUNCTUATORS.has(token.value);
@@ -93,11 +101,13 @@ export default {
           context.report({
             node: comment,
             messageId: "closingBraceComment",
-            fix: (fixer) =>
-              fixer.removeRange([
-                sourceCode.getTokenBefore(comment).range[1],
-                comment.range[1],
-              ]),
+            fix: isEndMarker(comment)
+              ? (fixer) =>
+                  fixer.removeRange([
+                    sourceCode.getTokenBefore(comment).range[1],
+                    comment.range[1],
+                  ])
+              : undefined,
           });
         }
       },
