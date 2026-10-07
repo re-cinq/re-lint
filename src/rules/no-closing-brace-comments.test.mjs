@@ -25,19 +25,23 @@ ruleTester.run("no-closing-brace-comments", rule, {
     {
       code: `if (a) {\n  work();\n} // end if`,
       errors: [{ messageId: "closingBraceComment", line: 3 }],
+      output: `if (a) {\n  work();\n}`,
     },
     {
       code: `describe("x", () => {\n  work();\n}); // end describe`,
       errors: [{ messageId: "closingBraceComment" }],
+      output: `describe("x", () => {\n  work();\n});`,
     },
     {
       code: `function f() {\n  work();\n} /* end f */`,
       errors: [{ messageId: "closingBraceComment" }],
+      output: `function f() {\n  work();\n}`,
     },
     // the statement's semicolon does not hide the brace
     {
       code: `const point = {\n  x: 1,\n}; // point`,
       errors: [{ messageId: "closingBraceComment" }],
+      output: `const point = {\n  x: 1,\n};`,
     },
     {
       code: `for (const item of items) {\n  if (item) {\n    work();\n  } // end if\n} // end for`,
@@ -45,10 +49,12 @@ ruleTester.run("no-closing-brace-comments", rule, {
         { messageId: "closingBraceComment", line: 4 },
         { messageId: "closingBraceComment", line: 5 },
       ],
+      output: `for (const item of items) {\n  if (item) {\n    work();\n  }\n}`,
     },
     {
       code: `work(a, (b) => {\n  rest(b);\n}) // callback`,
       errors: [{ messageId: "closingBraceComment" }],
+      output: `work(a, (b) => {\n  rest(b);\n})`,
     },
   ],
 });
