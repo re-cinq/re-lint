@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import {
   groundedLinkPredicate,
+  groundingFor,
   isGroundedLink,
   resetEvidenceCache,
 } from "./test-evidence.mjs";
@@ -89,4 +90,19 @@ test("grounds a link to another repository's test by URL, which this checkout ca
     ),
     true,
   );
+});
+
+test("groundingFor resolves a repo-relative link against the work tree root when ESLint runs from a subdirectory", () => {
+  const context = {
+    options: [],
+    cwd: resolve("src/rules"),
+    filename: resolve(ROOT, SPEC_PATH),
+  };
+  const link = {
+    label: "validated by",
+    path: "test-fixtures/require-status-matches-coverage/tests/grounded.test.ts",
+    line: 3,
+  };
+
+  assert.equal(groundingFor(context).isGroundedLink(link), true);
 });

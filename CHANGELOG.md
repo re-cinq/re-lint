@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.1
+
+- `require-status-matches-coverage` and `require-statement-links` resolve a
+  document's test links against the git work tree the document sits in, not
+  against the directory ESLint was run from. Run from a subdirectory, every
+  repo-relative link used to miss, a document read as having no evidence, and a
+  `Draft` status passed on a corpus whose links hold.
+
 ## 1.8.0
 
 - `eslint --fix` now resolves three more rules. `no-nested-if` merges an `if`
