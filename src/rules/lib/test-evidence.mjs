@@ -20,13 +20,14 @@
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { extname, relative, resolve, sep } from "node:path";
+import { dirname, extname, relative, resolve, sep } from "node:path";
 import {
   declarationSpans,
   resolveLinkPath,
   spansCover,
 } from "./spec-parsers.mjs";
 import { toPosix } from "./spec-link-index.mjs";
+import { workTreeRoot } from "./git-worktree.mjs";
 
 const SCANNABLE_EXTENSIONS = new Set([
   ".ts",
@@ -87,10 +88,18 @@ export function groundedLinkPredicate(where) {
 
 /**
  * The `{ isGroundedLink }` coverage option for the document a rule is linting:
- * links resolve from `options.specsRoot`, which defaults to the working directory.
+ * links resolve from `options.specsRoot`, else from the git work tree the
+ * document sits in, else from the working directory. ESLint run from a
+ * subdirectory lints the same document with another `cwd`, and a root read
+ * from it made every repo-relative link a miss, which read as a corpus with no
+ * evidence at all.
  */
 export function groundingFor(context) {
-  const root = context.options[0]?.specsRoot ?? context.cwd;
+  const root =
+    context.options[0]?.specsRoot ??
+    workTreeRoot(dirname(context.filename)) ??
+    workTreeRoot(context.cwd) ??
+    context.cwd;
 
   return {
     isGroundedLink: groundedLinkPredicate({
