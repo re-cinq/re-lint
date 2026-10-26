@@ -362,8 +362,8 @@ describe("re-lint-reanchor", () => {
     assert.equal(healed.status, 0);
   });
 
-  it("leaves a titled link into a test file this branch did not change alone, and --all moves it", () => {
-    const spec = asSpec(link("validated by subtracts numbers", "2"));
+  it("leaves a titled link on the L1 describe line of a test file this branch did not change alone, and --all moves it", () => {
+    const spec = asSpec(link("validated by subtracts numbers", "1"));
     const repo = repoWith(spec);
 
     write(repo, "README.md", asFile(["# Demo", "", "Run npm test."]));
@@ -374,6 +374,19 @@ describe("re-lint-reanchor", () => {
     assert.match(scoped.stdout, /out of scope: 1/);
     assert.equal(specAfterScoped, spec);
     assert.equal(swept.status, 0);
+    assert.equal(
+      read(repo, SPEC_PATH),
+      asSpec(link("validated by subtracts numbers", "5")),
+    );
+  });
+
+  it("moves a titled link on L2, inside adds numbers, to subtracts numbers on L5 in a test file this branch did not change", () => {
+    const repo = repoWith(asSpec(link("validated by subtracts numbers", "2")));
+
+    write(repo, "README.md", asFile(["# Demo", "", "Run npm test."]));
+    const result = run(repo, "main");
+
+    assert.equal(result.status, 0);
     assert.equal(
       read(repo, SPEC_PATH),
       asSpec(link("validated by subtracts numbers", "5")),

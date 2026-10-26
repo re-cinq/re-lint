@@ -9,7 +9,11 @@
  *
  * A test is linked when the spec/adr corpus carries a `([validated by](this#Lnn))`
  * link whose line falls inside the test's line span, or a whole-file link (no
- * `#L`) to the file. The corpus is read once per process (memoized per specsRoot)
+ * `#L`) to the file. A link whose label names a test of the file
+ * (`[validated by <title>]`, compared as `re-lint-reanchor` compares it) links
+ * that test only, and only when its anchor lands inside it: a stale anchor that
+ * drifted into a neighbour is reported on the titled test instead of silently
+ * linking the neighbour. A label naming no test of the file keeps the span rule. The corpus is read once per process (memoized per specsRoot)
  * via the shared parser — see `lib/spec-link-index.mjs`. Type info is off for
  * test files, so this works from the ESTree AST + filename + filesystem only.
  *
@@ -18,7 +22,7 @@
  */
 
 import path from "node:path";
-import { isTestFile } from "./lib/spec-parsers.mjs";
+import { isTestFile, normalizeTitle } from "./lib/spec-parsers.mjs";
 import {
   buildLinkIndex,
   corpusExists,
@@ -115,22 +119,39 @@ function isNamedTestCall(node) {
   return first.type === "TemplateLiteral";
 }
 
-function isLinked(entry, startLine, endLine) {
-  if (!entry) {
-    return false;
-  }
+const covers = (test, line) => line >= test.startLine && line <= test.endLine;
 
-  if (entry.wholeFile) {
-    return true;
-  }
+/**
+ * The tests one anchor links, and the titled tests it misses. A link whose label
+ * names a test in this file links that test alone, and only when its anchor
+ * lands inside it; any other link reaches the test its anchor lands in.
+ */
+function reachOf(tests, anchor) {
+  const titled = tests.filter((test) => test.title === anchor.title);
+  const hits = (titled.length > 0 ? titled : tests).filter((test) =>
+    covers(test, anchor.line),
+  );
 
-  for (const line of entry.lines) {
-    if (line >= startLine && line <= endLine) {
-      return true;
-    }
-  }
+  return { hits, missed: hits.length === 0 ? titled : [] };
+}
 
-  return false;
+/** Which tests the file's links reach, and the titled links that miss their test. */
+function resolveAnchors(tests, entry) {
+  const anchors = entry?.anchors ?? [];
+  const reaches = anchors.map((anchor) => ({
+    anchor,
+    ...reachOf(tests, anchor),
+  }));
+
+  return {
+    linked: new Set([
+      ...(entry?.wholeFile ? tests : []),
+      ...reaches.flatMap(({ hits }) => hits),
+    ]),
+    misanchored: reaches.flatMap(({ anchor, missed }) =>
+      missed.map((test) => ({ test, anchor })),
+    ),
+  };
 }
 
 // With no corpus under specsRoot, every test would flag as unlinked — a
@@ -154,26 +175,58 @@ function testName(sourceCode, first) {
     : sourceCode.getText(first);
 }
 
-function reportUnlinked(context, node, corpus) {
-  if (!isNamedTestCall(node)) {
-    return;
-  }
-  const startLine = node.loc.start.line;
+// The title a link label is compared with: a template literal with no
+// expressions reads as its value, one with expressions as written.
+function testTitle(sourceCode, first) {
+  const plain =
+    first.type === "TemplateLiteral" && first.expressions.length === 0;
 
-  if (isLinked(corpus.entry, startLine, node.loc.end.line)) {
-    return;
-  }
+  return normalizeTitle(
+    plain ? first.quasis[0].value.cooked : testName(sourceCode, first),
+  );
+}
 
-  context.report({
-    node: node.callee,
-    messageId: "unlinkedTest",
-    data: {
-      name: testName(context.sourceCode, node.arguments[0]),
-      file: corpus.relPath,
-      line: String(startLine),
-      roots: corpus.roots.map((root) => `${root}/**/*.md`).join(" or "),
-    },
-  });
+function testOf(sourceCode, node) {
+  return {
+    node,
+    name: testName(sourceCode, node.arguments[0]),
+    title: testTitle(sourceCode, node.arguments[0]),
+    startLine: node.loc.start.line,
+    endLine: node.loc.end.line,
+  };
+}
+
+function reportTests(context, tests, corpus) {
+  const { linked, misanchored } = resolveAnchors(tests, corpus.entry);
+
+  for (const { test, anchor } of misanchored) {
+    context.report({
+      node: test.node.callee,
+      messageId: "misanchoredLink",
+      data: {
+        name: test.name,
+        spec: anchor.specPath,
+        anchor: String(anchor.line),
+        line: String(test.startLine),
+      },
+    });
+  }
+  const named = new Set(misanchored.map(({ test }) => test));
+
+  for (const test of tests.filter(
+    (test) => !linked.has(test) && !named.has(test),
+  )) {
+    context.report({
+      node: test.node.callee,
+      messageId: "unlinkedTest",
+      data: {
+        name: test.name,
+        file: corpus.relPath,
+        line: String(test.startLine),
+        roots: corpus.roots.map((root) => `${root}/**/*.md`).join(" or "),
+      },
+    });
+  }
 }
 
 export default {
@@ -196,6 +249,8 @@ export default {
     messages: {
       unlinkedTest:
         "Test {{name}} has no spec link — add an inline ([validated by]({{file}}#L{{line}})) to the statement it validates in a {{roots}} markdown file (or, if this test isn't tied to a spec statement, it may not belong in the traceable suite).",
+      misanchoredLink:
+        "Test {{name}} is named by a link in {{spec}} whose anchor #L{{anchor}} lies outside it, so the link counts for no test — repoint it to #L{{line}} (`eslint --fix` with no-stale-spec-links moves an anchor that landed in another test).",
     },
   },
 
@@ -223,8 +278,15 @@ export default {
       roots,
     };
 
+    const tests = [];
+
     return {
-      CallExpression: (node) => reportUnlinked(context, node, corpus),
+      CallExpression(node) {
+        if (isNamedTestCall(node)) {
+          tests.push(testOf(context.sourceCode, node));
+        }
+      },
+      "Program:exit": () => reportTests(context, tests, corpus),
     };
   },
 };

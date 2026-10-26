@@ -19,6 +19,28 @@ function file(rel) {
   return path.join(FIXTURES, rel);
 }
 
+// specs/titled/spec.md names each test by title; "adds numbers" is anchored at
+// L5, inside "subtracts numbers", and "pending waits" names no test.
+const TITLED_TESTS = [
+  'describe("maths", () => {',
+  '  it("adds numbers", () => {',
+  "    expect(1 + 1).toBe(2);",
+  "  });",
+  '  it("subtracts numbers", () => {',
+  "    expect(2 - 1).toBe(1);",
+  "  });",
+  '  it("waits for pending work", () => {',
+  "    expect(true).toBe(true);",
+  "  });",
+  '  it("multiplies numbers", () => {',
+  "    expect(2 * 2).toBe(4);",
+  "  });",
+  '  it("divides numbers", () => {',
+  "    expect(4 / 2).toBe(2);",
+  "  });",
+  "});",
+].join("\n");
+
 const ruleTester = new RuleTester({
   languageOptions: { parser: tsParser, sourceType: "module" },
 });
@@ -57,8 +79,47 @@ ruleTester.run("require-spec-link", rule, {
       filename: file("tests/tagged.test.ts"),
       options: OPTS,
     },
+    {
+      // the correct anchor of a titled link, a short label linking by span, and
+      // a validated-by link followed by a second trailing parenthetical
+      code: TITLED_TESTS.replace(
+        '  it("adds numbers", () => {\n    expect(1 + 1).toBe(2);\n  });\n  it("subtracts numbers"',
+        '  const sum = (a, b) =>\n    a + b;\n\n  it("adds numbers"',
+      ),
+      filename: file("tests/titled.test.ts"),
+      options: OPTS,
+    },
   ],
   invalid: [
+    {
+      // "adds numbers" is named by a link whose L5 anchor lands in "subtracts
+      // numbers": the link counts for neither, and both are reported
+      code: TITLED_TESTS,
+      filename: file("tests/titled.test.ts"),
+      options: OPTS,
+      errors: [
+        {
+          messageId: "misanchoredLink",
+          line: 2,
+          data: {
+            name: "adds numbers",
+            spec: "specs/titled/spec.md",
+            anchor: "5",
+            line: "2",
+          },
+        },
+        {
+          messageId: "unlinkedTest",
+          line: 5,
+          data: {
+            name: "subtracts numbers",
+            file: "tests/titled.test.ts",
+            line: "5",
+            roots: ROOTS,
+          },
+        },
+      ],
+    },
     {
       // linked test file, but this it() sits on line 1 (the link points at line 2)
       code: `it("works", () => {});`,

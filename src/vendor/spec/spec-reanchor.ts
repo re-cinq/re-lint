@@ -475,7 +475,9 @@ export function addTallies(
  * still lies inside that test; a `validated by` or `implemented by` title no declaration carries
  * is reported, a bare label naming no test falls back to the hunks. Every other link is mapped
  * through the cited file's hunks from its paired merge-base line. A link the branch added or
- * whose href it edited by hand is kept as authored.
+ * whose href it edited by hand is kept as authored. Out of scope, a link is left alone unless
+ * its label names one test and its anchor lies in another test's span: that link moves to the
+ * test it names, since read by span it would be evidence for the wrong test.
  */
 export function createReanchorer(
   repository: ReanchorRepository,
@@ -528,16 +530,31 @@ export function createReanchorer(
       ) ?? link.target,
   });
 
-  const byTitle = (link: AnchorLink): Resolution | null => {
+  // The declarations carrying the title a link's label names, or null when the label names none or the target is no test file.
+  const titledDeclarations = (link: AnchorLink) => {
     const title = titleOfLabel(link.label);
 
     if (title === null || !testFilePattern.test(link.target)) {
       return null;
     }
     const { declarations, spans } = declarationsIn(link.target);
-    const matches = declarations.filter(
-      (declaration) => declaration.title === title,
-    );
+
+    return {
+      title,
+      spans,
+      matches: declarations.filter(
+        (declaration) => declaration.title === title,
+      ),
+    };
+  };
+
+  const byTitle = (link: AnchorLink): Resolution | null => {
+    const titled = titledDeclarations(link);
+
+    if (titled === null) {
+      return null;
+    }
+    const { title, spans, matches } = titled;
 
     if (matches.length > 1) {
       return { failure: `several tests carry the title "${title}"` };
@@ -555,9 +572,25 @@ export function createReanchorer(
     return { line: intended >= start && intended < end ? intended : start };
   };
 
+  // The one test a titled link names, when its anchor sits inside another test.
+  const strayTitled = (link: AnchorLink): Resolution | null => {
+    const titled = titledDeclarations(link);
+
+    if (titled === null || titled.matches.length !== 1) {
+      return null;
+    }
+    const named = titled.matches[0].line;
+    const landedIn = titled.spans.find(
+      (span) => link.line >= span.start && link.line < span.end,
+    );
+    const stray = landedIn !== undefined && landedIn.start !== named;
+
+    return stray ? { line: named } : null;
+  };
+
   const resolve = (link: AnchorLink): Resolution =>
     !options.all && !repository.isChanged(link.target)
-      ? { outOfScope: true }
+      ? (strayTitled(link) ?? { outOfScope: true })
       : (byTitle(link) ?? byHunks(link));
 
   const rewriteLink = (
