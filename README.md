@@ -291,6 +291,22 @@ link to a deleted file or a line past every test, and `require-statement-links` 
 carrying a link that is not evidence, not as missing one. `specsRoot` sets
 where links resolve from and defaults to the working directory.
 
+A statement may end in several parentheticals, and a test link counts in any
+of them: `Done. ([validated by](a.test.ts#L4)) ([from plan](https://…))` is
+linked. Only the parentheticals at the very end count, each after the last
+starting with a link; a test link inside a prose parenthetical earlier in the
+sentence is not evidence.
+
+`require-spec-link` reads a link's label too. When the label names a test of
+the cited file, as `[validated by <test title>]` (the title compared the way
+`re-lint-reanchor` compares it: whitespace collapsed, backticks unwrapped,
+otherwise exact), the link links that test alone, and only when its `#Lnn`
+lands inside it. An anchor that drifted into a neighbouring test is reported on
+the test the label names, and no longer passes the neighbour off as linked, so
+a run shows every test left unlinked by a shift at once. A label that names no
+test of the file, such as `[validated by pending waits]`, links whichever test
+its anchor lands in, as before.
+
 `require-status-matches-coverage` fixes its own report by rewriting the status
 row to the one the evidence supports, in both directions: a spec that gained an
 unlinked statement drops from Shipped, and a fully linked Draft is promoted. It
@@ -472,7 +488,10 @@ npx re-lint-reanchor --all develop
   its href's line.
 
 Only links into files the branch changed are touched, so a pull request
-carries no unrelated spec churn; `--all` sweeps every link. `base-ref`
+carries no unrelated spec churn; `--all` sweeps every link. One link is moved
+wherever it points: a label naming exactly one test whose anchor lies in a
+different test's span is repointed to the test it names, because read by
+span it is evidence for the wrong test. `base-ref`
 defaults to `origin/main`. The corpus defaults to `specs/**/*.md`,
 `.specify/spec.md` and `adrs/**/*.md`; each `--corpus <glob>` replaces it
 (`**`, `*` and `?` are supported). Exit codes: 0 clean, 1 on an unmapped or

@@ -82,6 +82,14 @@ const movedOneLine = committedSpec(
   "moved-one-line",
   `# Maths\n\nBoth: ${titled("adds numbers", MATHS, 2)}, ${titled("subtracts numbers", MATHS, 5)}\n`,
 );
+const inNeighbour = committedSpec(
+  "in-neighbour",
+  spec(titled("adds numbers", UNTOUCHED, 5)),
+);
+const shortLabelInNeighbour = committedSpec(
+  "short-label",
+  spec(titled("pending waits", UNTOUCHED, 5)),
+);
 const bareLabel = committedSpec("bare-label", spec(link("L2", MATHS, 2)));
 
 write(MATHS, MATHS_TEST);
@@ -103,6 +111,8 @@ ruleTester.run("no-stale-spec-links", rule, {
     { ...upToDate, options: [withBase] },
     // the branch left the cited file alone, so its links are out of scope ...
     { ...unchangedFileStale, options: [withBase] },
+    // a label naming no test keeps its anchor wherever it lands
+    { ...shortLabelInNeighbour, options: [withBase] },
     // ... and with no merge base there is nothing to compare against
     { ...moved, options: [{ baseRef: "no-such-ref" }] },
     // a document outside any git work tree
@@ -152,6 +162,20 @@ ruleTester.run("no-stale-spec-links", rule, {
       options: [withBase],
       errors: [{ messageId: "staleLink", line: 3 }],
       output: spec(link("L5", MATHS, 5)),
+    },
+    {
+      // a titled anchor that landed in another test moves to its own test,
+      // even in a file the branch left alone
+      ...inNeighbour,
+      options: [withBase],
+      errors: [
+        {
+          messageId: "staleLink",
+          line: 3,
+          data: { moved: `${UNTOUCHED}#L5 -> #L2` },
+        },
+      ],
+      output: spec(titled("adds numbers", UNTOUCHED, 2)),
     },
     {
       // `all` sweeps links into files the branch did not change

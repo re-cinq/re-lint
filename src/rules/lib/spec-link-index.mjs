@@ -5,7 +5,9 @@
  * The source of truth for a spec↔test link lives INSIDE the spec.md/adr `.md`
  * as an inline trailing parenthetical — `([validated by](path/to/test.ts#L42))`
  * — parsed by the canonical `linksForStatements` (reused here, not re-implemented).
- * Each test link contributes its `#Lline` to that test path's line set; a link
+ * Each test link contributes an anchor to that test path's entry: its `#Lline`,
+ * the test title its label names (`titleOfLabel`, the same reading
+ * `re-lint-reanchor` relocates links by) and the document it sits in; a link
  * with no `#L` anchor marks the whole file linked.
  *
  * Split out of the rule so the pure index (buildLinkIndex) and the filesystem
@@ -14,9 +16,14 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { linksForStatements, resolveLinkPath } from "./spec-parsers.mjs";
+import {
+  linksForStatements,
+  resolveLinkPath,
+  titleOfLabel,
+} from "./spec-parsers.mjs";
 
-/** @typedef {{ lines: Set<number>, wholeFile: boolean }} LinkEntry */
+/** @typedef {{ line: number, title: string | null, specPath: string }} LinkAnchor */
+/** @typedef {{ anchors: LinkAnchor[], wholeFile: boolean }} LinkEntry */
 
 export function toPosix(filePath) {
   return filePath.split(path.sep).join("/");
@@ -40,7 +47,7 @@ function entryFor(index, key) {
   if (existing) {
     return existing;
   }
-  const created = { lines: new Set(), wholeFile: false };
+  const created = { anchors: [], wholeFile: false };
   index.set(key, created);
   return created;
 }
@@ -51,7 +58,11 @@ function recordLink(index, { link, specPath }) {
     entry.wholeFile = true;
     return;
   }
-  entry.lines.add(link.line);
+  entry.anchors.push({
+    line: link.line,
+    title: titleOfLabel(link.label),
+    specPath,
+  });
 }
 
 /**

@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.9.0
+
+- Every trailing parenthetical of a statement is read for its test links, not
+  only the last. `Done. ([validated by X](a.test.ts#L10)) ([from plan](https://…))`
+  used to drop the validated-by link silently, so the test read as unlinked
+  wherever it pointed. Parentheticals before the last count only when they
+  start with a link, so a prose aside earlier in the sentence is still not
+  evidence.
+- `require-spec-link` matches a link whose label names a test of the cited
+  file (`[validated by <title>]`, compared as `re-lint-reanchor` compares
+  titles) to that test alone. Its anchor must land inside the test: one that
+  drifted into a neighbour is reported on the named test (`misanchoredLink`)
+  and no longer counts as linking the neighbour, so a shift reveals every
+  unlinked test in one run instead of one per CI round. Labels that name no
+  test of the file keep the old rule: any test the anchor lands in.
+- `no-stale-spec-links` and `re-lint-reanchor` repoint such a link to the
+  `it()` line of the test it names even in a file the branch did not change.
+  A titled link that lands on no test there is still out of scope.
+
 ## 1.8.1
 
 - `require-status-matches-coverage` and `require-statement-links` resolve a

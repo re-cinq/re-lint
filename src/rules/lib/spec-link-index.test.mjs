@@ -26,9 +26,36 @@ test("indexes a #Lnn test link as that line", () => {
   ]);
 
   assert.deepEqual(index.get("a.test.ts"), {
-    lines: new Set([88]),
+    anchors: [{ line: 88, title: null, specPath: "specs/a/spec.md" }],
     wholeFile: false,
   });
+});
+
+test("indexes a validated-by link with the test title its label names", () => {
+  const index = buildLinkIndex([
+    {
+      path: "specs/a/spec.md",
+      content: `Adds. ([validated by adds numbers](a.test.ts#L5))`,
+    },
+  ]);
+
+  assert.deepEqual(index.get("a.test.ts").anchors, [
+    { line: 5, title: "adds numbers", specPath: "specs/a/spec.md" },
+  ]);
+});
+
+test("indexes a validated-by link followed by a from-plan parenthetical", () => {
+  const index = buildLinkIndex([
+    {
+      path: "specs/a/spec.md",
+      content: `Adds. ([validated by](a.test.ts#L5)) ([from plan](https://example.test/plans/7))`,
+    },
+  ]);
+
+  assert.deepEqual(
+    index.get("a.test.ts").anchors.map((anchor) => anchor.line),
+    [5],
+  );
 });
 
 test("indexes a link without #L as a whole-file link", () => {
@@ -61,7 +88,10 @@ test("excludes non-test (code) links", () => {
 test("readSpecFiles reads specs and adrs, buildLinkIndex covers both", () => {
   const index = buildLinkIndex(readSpecFiles(FIXTURES));
 
-  assert.deepEqual(index.get("tests/linked.test.ts").lines, new Set([2]));
+  assert.deepEqual(
+    index.get("tests/linked.test.ts").anchors.map((anchor) => anchor.line),
+    [2],
+  );
   assert.equal(index.get("tests/adr-linked.test.ts").wholeFile, true);
 });
 
@@ -77,7 +107,10 @@ test("resolves a dir-relative ../ href to the repo-root key", () => {
     },
   ]);
 
-  assert.deepEqual(index.get("apps/x.test.ts").lines, new Set([5]));
+  assert.deepEqual(
+    index.get("apps/x.test.ts").anchors.map((anchor) => anchor.line),
+    [5],
+  );
   assert.equal(index.has("../../apps/x.test.ts"), false);
 });
 

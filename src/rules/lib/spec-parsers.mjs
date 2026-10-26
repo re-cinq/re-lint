@@ -17,4 +17,9 @@ export {
 export { linksForStatements, resolveLinkPath } from "#spec/spec-link-parser.js";
 export { isTestFile } from "#spec/test-paths.js";
 export { groundingFindings, namedPaths } from "#spec/grounding.js";
-export { declarationSpans, spansCover } from "#spec/spec-reanchor.js";
+export {
+  declarationSpans,
+  normalizeTitle,
+  spansCover,
+  titleOfLabel,
+} from "#spec/spec-reanchor.js";
