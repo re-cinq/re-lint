@@ -128,6 +128,11 @@ ruleTester.run("no-stale-spec-links", rule, {
     { ...unchangedFileStale, options: [withBase] },
     // a label naming no test keeps its anchor wherever it lands
     { ...shortLabelInNeighbour, options: [withBase] },
+    // reportUnhealable: false keeps the rule to the links it can repoint
+    {
+      ...absentTitle,
+      options: [{ ...withBase, reportUnhealable: false }],
+    },
     // a rotten anchor into a file the branch did not change is not this branch's
     { ...rottenUntouched, options: [withBase] },
     // ... and with no merge base there is nothing to compare against

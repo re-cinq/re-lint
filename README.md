@@ -256,14 +256,14 @@ These run on `spec.md` and ADR files under `language: "markdown/gfm"` from
 Every task creates an Issue. ([validated by](src/tasks/create.test.ts#L42))
 ```
 
-| Rule                              | Reports                                                                                                                                | Options                                     |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `require-intro-paragraph`         | a document without a lead paragraph between its title and the first section                                                            | `roots: { spec: ["specs"], adr: ["adrs"] }` |
-| `require-statement-links`         | a testable statement with no `([validated by](...))` link, or whose link points at no test                                             | `roots`, `specsRoot: "."`                   |
-| `require-status-matches-coverage` | a `\| Status \|` row that disagrees with link coverage: none is Draft, some is In Progress, all is Shipped                             | `roots`, `specsRoot: "."`                   |
-| `no-dead-md-links`                | a markdown link to a repository file that does not exist, or a `#Lnn` past the end of the file                                         |                                             |
-| `no-stale-spec-links`             | a `[label](path#Lnn)` link whose anchor no longer matches where the branch moved its test (fixable); one it cannot repoint is reported | `all: false`, `baseRef: "origin/main"`      |
-| `no-ungrounded-spec-name`         | a repository path the document names in backticks, or bare in a quoted passage, that is not in the repository                          | `roots`                                     |
+| Rule                              | Reports                                                                                                                                | Options                                                          |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `require-intro-paragraph`         | a document without a lead paragraph between its title and the first section                                                            | `roots: { spec: ["specs"], adr: ["adrs"] }`                      |
+| `require-statement-links`         | a testable statement with no `([validated by](...))` link, or whose link points at no test                                             | `roots`, `specsRoot: "."`                                        |
+| `require-status-matches-coverage` | a `\| Status \|` row that disagrees with link coverage: none is Draft, some is In Progress, all is Shipped                             | `roots`, `specsRoot: "."`                                        |
+| `no-dead-md-links`                | a markdown link to a repository file that does not exist, or a `#Lnn` past the end of the file                                         |                                                                  |
+| `no-stale-spec-links`             | a `[label](path#Lnn)` link whose anchor no longer matches where the branch moved its test (fixable); one it cannot repoint is reported | `all: false`, `baseRef: "origin/main"`, `reportUnhealable: true` |
+| `no-ungrounded-spec-name`         | a repository path the document names in backticks, or bare in a quoted passage, that is not in the repository                          | `roots`                                                          |
 
 The `specs` preset wires all six, plus `require-spec-link` over test files,
 the way the repository this package grew out of runs them: the three

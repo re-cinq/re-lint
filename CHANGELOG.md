@@ -9,7 +9,8 @@
   anchor into a file the branch did not change is not reported. Before, such a
   link surfaced only as `require-spec-link` on the test, with a hint to run
   `eslint --fix` that could not help. A new error on specs that carried such
-  links unnoticed.
+  links unnoticed. `reportUnhealable: false` turns the report off, for a
+  repository that is still draining a queue of them.
 - A label of the form `validated by name:23`, with or without backticks, and a
   label that opens with a stray bracket name no test, so the link is mapped
   through the diff hunks and is never reported as a missing title.

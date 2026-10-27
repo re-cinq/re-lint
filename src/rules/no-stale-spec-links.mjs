@@ -20,6 +20,8 @@
  * the reason: a title no test carries or several carry, a cited line the branch
  * rewrote, an anchor on a blank or closing line. A rotten anchor counts only in
  * a file the branch changed, so a pull request is not blamed for old debt.
+ * `reportUnhealable: false` turns this report off, for a repository that is
+ * still draining a queue of such links.
  */
 
 import { dirname, relative } from "node:path";
@@ -81,7 +83,7 @@ function staleLines(source, rewritten) {
     );
 }
 
-function reportStale(context, { root, base, all }) {
+function reportStale(context, { root, base, all, reportUnhealable }) {
   const source = context.sourceCode.getText();
   const docPath = toPosix(relative(root, context.filename));
   const { text, findings } = createReanchorer(base.repository, {
@@ -103,7 +105,7 @@ function reportStale(context, { root, base, all }) {
     });
   }
 
-  for (const { docLine, detail } of findings) {
+  for (const { docLine, detail } of reportUnhealable ? findings : []) {
     context.report({
       loc: { line: docLine, column: 1 },
       messageId: "unhealableLink",
@@ -126,6 +128,7 @@ export default {
         properties: {
           all: { type: "boolean" },
           baseRef: { type: "string" },
+          reportUnhealable: { type: "boolean" },
         },
         additionalProperties: false,
       },
@@ -139,8 +142,11 @@ export default {
   },
 
   create(context) {
-    const { all = false, baseRef = DEFAULT_BASE_REF } =
-      context.options[0] ?? {};
+    const {
+      all = false,
+      baseRef = DEFAULT_BASE_REF,
+      reportUnhealable = true,
+    } = context.options[0] ?? {};
     const root = workTreeRoot(dirname(context.filename));
     const base = root && repositoryFor(root, baseRef);
 
@@ -150,7 +156,7 @@ export default {
 
     return {
       "root:exit"() {
-        reportStale(context, { root, base, all });
+        reportStale(context, { root, base, all, reportUnhealable });
       },
     };
   },
