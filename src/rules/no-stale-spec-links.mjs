@@ -114,6 +114,12 @@ function reportStale(context, { root, base, all, reportUnhealable }) {
   }
 }
 
+const withDefaults = ({
+  all = false,
+  baseRef = DEFAULT_BASE_REF,
+  reportUnhealable = true,
+} = {}) => ({ all, baseRef, reportUnhealable });
+
 export default {
   meta: {
     type: "problem",
@@ -142,11 +148,7 @@ export default {
   },
 
   create(context) {
-    const {
-      all = false,
-      baseRef = DEFAULT_BASE_REF,
-      reportUnhealable = true,
-    } = context.options[0] ?? {};
+    const { all, baseRef, reportUnhealable } = withDefaults(context.options[0]);
     const root = workTreeRoot(dirname(context.filename));
     const base = root && repositoryFor(root, baseRef);
 
