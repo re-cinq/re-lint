@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.10.0
 
 - `no-stale-spec-links` reports a link it cannot repoint (`unhealableLink`),
   on the spec line with the reason, and no longer stays silent about it: a
