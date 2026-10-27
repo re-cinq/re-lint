@@ -208,19 +208,49 @@ function candidatePaths(linkPath: string, docPath: string): string[] {
   return [...new Set([fromRoot, besideDocument])];
 }
 
-/** Every single-line `it()`/`test()` declaration in a test file's source. */
-export function findTestDeclarations(source: string): TestDeclaration[] {
-  return lines(source).flatMap((text, index) => {
-    const match = DECLARATION.exec(text);
+// How many lines past an opening a title may sit: room for an `it.each` table.
+const DECLARATION_REACH = 40;
 
-    return match
-      ? [
-          {
-            title: normalizeTitle(match[2].replace(/\\(.)/g, "$1")),
-            line: index + 1,
-          },
-        ]
-      : [];
+// The title of the declaration opening at `index`, read from the opening line alone or from the lines prettier wrapped it over, never from the next test.
+function declarationAt(
+  sourceLines: readonly string[],
+  index: number,
+): TestDeclaration | null {
+  if (!TEST_OPENING.test(sourceLines[index])) {
+    return null;
+  }
+
+  for (let end = index; end <= index + DECLARATION_REACH; end += 1) {
+    const reachedNextOpening =
+      end > index &&
+      (end >= sourceLines.length ||
+        TEST_OPENING.test(sourceLines[end]) ||
+        SUITE_OPENING.test(sourceLines[end]));
+
+    if (reachedNextOpening) {
+      return null;
+    }
+    const match = DECLARATION.exec(sourceLines.slice(index, end + 1).join(" "));
+
+    if (match) {
+      return {
+        title: normalizeTitle(match[2].replace(/\\(.)/g, "$1")),
+        line: index + 1,
+      };
+    }
+  }
+
+  return null;
+}
+
+/** Every `it()`/`test()` declaration in a test file's source, its title read from the opening line or the lines it wraps over. */
+export function findTestDeclarations(source: string): TestDeclaration[] {
+  const sourceLines = lines(source);
+
+  return sourceLines.flatMap((_, index) => {
+    const declaration = declarationAt(sourceLines, index);
+
+    return declaration ? [declaration] : [];
   });
 }
 

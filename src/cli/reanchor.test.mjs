@@ -196,6 +196,27 @@ describe("re-lint-reanchor", () => {
     assert.match(result.stdout, /stale: 0, up to date: 1/);
   });
 
+  it("moves a titled link to a prettier-wrapped test, L2 to L4, when two lines are inserted above", () => {
+    const wrapped = replaceLine(MATHS_TEST, 2, [
+      "  it(",
+      '    "adds numbers",',
+      "    () => {",
+    ]);
+    const repo = repoWith(
+      asSpec(link("validated by adds numbers", "2")),
+      wrapped,
+    );
+
+    prependIntro(repo, wrapped);
+    const result = run(repo, "main");
+
+    assert.equal(result.status, 0);
+    assert.equal(
+      read(repo, SPEC_PATH),
+      asSpec(link("validated by adds numbers", "4")),
+    );
+  });
+
   it("unwraps a title written in backticks before looking it up, L5 to L7", () => {
     const repo = repoWith(
       asSpec(link("validated by `subtracts numbers`", "5")),

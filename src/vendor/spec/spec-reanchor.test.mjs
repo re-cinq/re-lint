@@ -299,3 +299,48 @@ test("findTestDeclarations reads the title of an it.each call", () => {
     { title: "adds %s", line: 1 },
   ]);
 });
+
+test("findTestDeclarations reads a title prettier wrapped onto the line after it( at the it( line", () => {
+  const source = [
+    "describe('maths', () => {",
+    "  it(",
+    '    "adds numbers when both are positive and the sum stays in range",',
+    "    () => {},",
+    "  );",
+    "});",
+  ].join("\n");
+
+  assert.deepEqual(findTestDeclarations(source), [
+    {
+      title: "adds numbers when both are positive and the sum stays in range",
+      line: 2,
+    },
+  ]);
+});
+
+test("findTestDeclarations reads the title of an it.each whose table spans four lines at the it.each( line", () => {
+  const source = [
+    "it.each([",
+    "  [1, 2],",
+    "  [3, 4],",
+    '])("adds %s", () => {});',
+  ].join("\n");
+
+  assert.deepEqual(findTestDeclarations(source), [
+    { title: "adds %s", line: 1 },
+  ]);
+});
+
+test("findTestDeclarations does not read the next test's title into an opening whose title it cannot find", () => {
+  const source = [
+    "it(",
+    "  titleOfTheDay,",
+    "  () => {},",
+    ");",
+    'it("subtracts numbers", () => {});',
+  ].join("\n");
+
+  assert.deepEqual(findTestDeclarations(source), [
+    { title: "subtracts numbers", line: 5 },
+  ]);
+});

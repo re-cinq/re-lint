@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- A test declaration whose title sits below its opening line is read: a title
+  prettier wrapped onto the next line (`it(\n  "title",`) and an `it.each`
+  whose table spans several lines. The declaration stays at its opening line,
+  where `require-spec-link` counts the test from. Before, a titled link into
+  such a test matched no declaration and was left alone, so it went stale
+  without a word.
+
 ## 1.9.0
 
 - Every trailing parenthetical of a statement is read for its test links, not
