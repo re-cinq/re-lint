@@ -418,3 +418,25 @@ test("a reanchorer returns a rotten finding for an in-scope link on a closing li
     ],
   );
 });
+
+test("titleOfLabel names no test for a validated-by file:line label, with or without backticks or a stray opening bracket", () => {
+  assert.deepEqual(
+    [
+      titleOfLabel("validated by link-target-path:23"),
+      titleOfLabel("validated by `spend.test.ts:30`"),
+      titleOfLabel("validated by [`spend.test.ts:30`"),
+      titleOfLabel("validated by [adds numbers, then subtracts them"),
+      titleOfLabel("validated by retries at 10:30"),
+    ],
+    [null, null, null, null, "retries at 10:30"],
+  );
+});
+
+test("a reanchorer reports no finding for a validated-by file:line label whose test title it never claimed", () => {
+  const findings = reanchorFindings(
+    { workingFile: 'it("adds numbers", () => {});\n' },
+    "One. ([validated by add:1](../../tests/a.test.ts#L1))",
+  );
+
+  assert.deepEqual(findings, []);
+});

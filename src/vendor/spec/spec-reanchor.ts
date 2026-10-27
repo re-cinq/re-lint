@@ -26,6 +26,8 @@ const SUITE_OPENING =
 const LABEL_PREFIX = /^(?:validated|implemented) by(?:\s+|$)/;
 const BASENAME_LABEL = /^[^`\s/]+\.(?:test|spec)\.[cm]?[jt]sx?:\d+$/;
 const LINE_LABEL = /^L\d+$/;
+// A file and line written where a title belongs: `name:23`, `` `name.test.ts:23` ``, either with a stray opening bracket.
+const FILE_LINE_LABEL = /^[^\s]+:\d+$/;
 const CONTENTLESS = /^[)\]}>,;]*$/;
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm;
 
@@ -191,12 +193,16 @@ export function normalizeTitle(title: string): string {
 
 /**
  * The test title a label may name, with any `validated by` or `implemented by` prefix removed:
- * null for an empty label, an `Lnn` label and a `file.test.ts:NN` label.
+ * null for an empty label, an `Lnn` label, a `file:NN` label and a label that opens with a stray bracket.
  */
 export function titleOfLabel(label: string): string | null {
   const title = normalizeTitle(label.trim().replace(LABEL_PREFIX, ""));
   const unnamed =
-    title.length === 0 || LINE_LABEL.test(title) || BASENAME_LABEL.test(title);
+    title.length === 0 ||
+    title.startsWith("[") ||
+    LINE_LABEL.test(title) ||
+    BASENAME_LABEL.test(title) ||
+    FILE_LINE_LABEL.test(title.replace(/^`|`$/g, ""));
 
   return unnamed ? null : title;
 }
