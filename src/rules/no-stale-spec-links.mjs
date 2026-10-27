@@ -16,8 +16,12 @@
  * `require-spec-link`: a long-lived ESLint server will not see a commit made
  * after the first lint until it restarts.
  *
- * Reports only links it can repoint. A title no test carries, or an anchor on a
- * blank line, is left to `re-lint-reanchor --check`.
+ * A link it cannot repoint is reported without a fix, on the spec line, with
+ * the reason: a title no test carries or several carry, a cited line the branch
+ * rewrote, an anchor on a blank or closing line. A rotten anchor counts only in
+ * a file the branch changed, so a pull request is not blamed for old debt.
+ * `reportUnhealable: false` turns this report off, for a repository that is
+ * still draining a queue of such links.
  */
 
 import { dirname, relative } from "node:path";
@@ -79,10 +83,13 @@ function staleLines(source, rewritten) {
     );
 }
 
-function reportStale(context, { root, base, all }) {
+function reportStale(context, { root, base, all, reportUnhealable }) {
   const source = context.sourceCode.getText();
   const docPath = toPosix(relative(root, context.filename));
-  const { text } = createReanchorer(base.repository, { check: false, all })({
+  const { text, findings } = createReanchorer(base.repository, {
+    check: false,
+    all,
+  })({
     docPath,
     source,
     baseSource: baseCopyOf(root, base.mergeBase, docPath),
@@ -97,7 +104,21 @@ function reportStale(context, { root, base, all }) {
         fixer.replaceTextRange(lineRange(source, stale.line), stale.after),
     });
   }
+
+  for (const { docLine, detail } of reportUnhealable ? findings : []) {
+    context.report({
+      loc: { line: docLine, column: 1 },
+      messageId: "unhealableLink",
+      data: { detail },
+    });
+  }
 }
+
+const withDefaults = ({
+  all = false,
+  baseRef = DEFAULT_BASE_REF,
+  reportUnhealable = true,
+} = {}) => ({ all, baseRef, reportUnhealable });
 
 export default {
   meta: {
@@ -113,6 +134,7 @@ export default {
         properties: {
           all: { type: "boolean" },
           baseRef: { type: "string" },
+          reportUnhealable: { type: "boolean" },
         },
         additionalProperties: false,
       },
@@ -120,12 +142,13 @@ export default {
     messages: {
       staleLink:
         "Spec link anchors are out of date: {{moved}}. Run `eslint --fix` (or `npx re-lint-reanchor`) to repoint them.",
+      unhealableLink:
+        "Spec link cannot be repointed automatically: {{detail}}. Repoint it by hand to the line of the test it validates.",
     },
   },
 
   create(context) {
-    const { all = false, baseRef = DEFAULT_BASE_REF } =
-      context.options[0] ?? {};
+    const { all, baseRef, reportUnhealable } = withDefaults(context.options[0]);
     const root = workTreeRoot(dirname(context.filename));
     const base = root && repositoryFor(root, baseRef);
 
@@ -135,7 +158,7 @@ export default {
 
     return {
       "root:exit"() {
-        reportStale(context, { root, base, all });
+        reportStale(context, { root, base, all, reportUnhealable });
       },
     };
   },

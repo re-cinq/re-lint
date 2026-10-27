@@ -26,6 +26,8 @@ const SUITE_OPENING =
 const LABEL_PREFIX = /^(?:validated|implemented) by(?:\s+|$)/;
 const BASENAME_LABEL = /^[^`\s/]+\.(?:test|spec)\.[cm]?[jt]sx?:\d+$/;
 const LINE_LABEL = /^L\d+$/;
+// A file and line written where a title belongs: `name:23`, `` `name.test.ts:23` ``, either with a stray opening bracket.
+const FILE_LINE_LABEL = /^[^\s]+:\d+$/;
 const CONTENTLESS = /^[)\]}>,;]*$/;
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm;
 
@@ -104,9 +106,25 @@ export interface ReanchorDocument {
   baseSource: string | null;
 }
 
+/** A link the re-anchor cannot repoint, found on `docLine` of the document. */
+export interface ReanchorFinding {
+  docLine: number;
+  kind: "unmapped" | "rotten";
+  detail: string;
+}
+
 export interface ReanchorResult {
   text: string;
   tally: ReanchorTally;
+  /** The unmapped links, and the rotten ones the branch is answerable for: a link into a file it did not change is not. */
+  findings: ReanchorFinding[];
+}
+
+// Where a link's outcome is recorded: the document's tally, its findings, and the line the link sits on.
+interface LinkRecord {
+  tally: ReanchorTally;
+  findings: ReanchorFinding[];
+  docLine: number;
 }
 
 export interface ReanchorReport {
@@ -175,12 +193,16 @@ export function normalizeTitle(title: string): string {
 
 /**
  * The test title a label may name, with any `validated by` or `implemented by` prefix removed:
- * null for an empty label, an `Lnn` label and a `file.test.ts:NN` label.
+ * null for an empty label, an `Lnn` label, a `file:NN` label and a label that opens with a stray bracket.
  */
 export function titleOfLabel(label: string): string | null {
   const title = normalizeTitle(label.trim().replace(LABEL_PREFIX, ""));
   const unnamed =
-    title.length === 0 || LINE_LABEL.test(title) || BASENAME_LABEL.test(title);
+    title.length === 0 ||
+    title.startsWith("[") ||
+    LINE_LABEL.test(title) ||
+    BASENAME_LABEL.test(title) ||
+    FILE_LINE_LABEL.test(title.replace(/^`|`$/g, ""));
 
   return unnamed ? null : title;
 }
@@ -626,11 +648,12 @@ export function createReanchorer(
   const rewriteLink = (
     written: AnchorLink,
     docPath: string,
-    tally: ReanchorTally,
+    { tally, findings, docLine }: LinkRecord,
   ): string => {
     const link = locate(written);
     const resolution = resolve(link);
-    const where = `${docPath}: ${link.linkPath}#L${link.line}`;
+    const here = `${link.linkPath}#L${link.line}`;
+    const where = `${docPath}: ${here}`;
     const line = "line" in resolution ? resolution.line : link.line;
 
     if ("outOfScope" in resolution) {
@@ -639,6 +662,11 @@ export function createReanchorer(
       tally.authored += 1;
     } else if ("failure" in resolution) {
       tally.reports.unmapped.push(`${where} -> ${resolution.failure}`);
+      findings.push({
+        docLine,
+        kind: "unmapped",
+        detail: `${here} -> ${resolution.failure}`,
+      });
     } else if (line === link.line) {
       tally.upToDate += 1;
     } else {
@@ -653,6 +681,14 @@ export function createReanchorer(
 
     if (reason !== null) {
       tally.reports.rotten.push(`${where} -> ${reason}`);
+
+      if (!("outOfScope" in resolution)) {
+        findings.push({
+          docLine,
+          kind: "rotten",
+          detail: `${here} -> ${reason}`,
+        });
+      }
     }
 
     if (syncedLabel(link.label, link.line) !== link.label) {
@@ -677,22 +713,27 @@ export function createReanchorer(
       workingLines,
     );
     const tally = emptyTally();
+    const findings: ReanchorFinding[] = [];
     const rewritten = workingLines.map((text, lineIndex) => {
       let position = -1;
 
       return text.replace(ANCHOR_LINK, (whole) => {
         position += 1;
-        const replacement = rewriteLink(
-          links[lineIndex][position],
-          docPath,
+        const replacement = rewriteLink(links[lineIndex][position], docPath, {
           tally,
-        );
+          findings,
+          docLine: lineIndex + 1,
+        });
 
         return options.check ? whole : replacement;
       });
     });
 
-    return { text: options.check ? source : rewritten.join("\n"), tally };
+    return {
+      text: options.check ? source : rewritten.join("\n"),
+      tally,
+      findings,
+    };
   };
 }
 

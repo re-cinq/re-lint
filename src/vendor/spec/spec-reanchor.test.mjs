@@ -344,3 +344,99 @@ test("findTestDeclarations does not read the next test's title into an opening w
     { title: "subtracts numbers", line: 5 },
   ]);
 });
+
+const reanchorFindings = (
+  { workingFile, hunks = [], isChanged = true },
+  source,
+) =>
+  createReanchorer(
+    {
+      workingFile: () => workingFile,
+      hunks: () => hunks,
+      isChanged: () => isChanged,
+    },
+    { check: false, all: false },
+  )({ docPath: "specs/a/spec.md", source, baseSource: source }).findings;
+
+test("a reanchorer returns an unmapped finding on doc line 3 for a validated-by title no test carries", () => {
+  const findings = reanchorFindings(
+    { workingFile: 'it("adds numbers", () => {});\n' },
+    [
+      "# A",
+      "",
+      "One. ([validated by multiplies numbers](../../tests/a.test.ts#L1))",
+    ].join("\n"),
+  );
+
+  assert.deepEqual(findings, [
+    {
+      docLine: 3,
+      kind: "unmapped",
+      detail:
+        '../../tests/a.test.ts#L1 -> no test in tests/a.test.ts carries the title "multiplies numbers"',
+    },
+  ]);
+});
+
+test("a reanchorer returns an unmapped finding for an untitled link whose merge-base line was rewritten", () => {
+  const findings = reanchorFindings(
+    {
+      workingFile: "a\nb\nc\nd\n",
+      hunks: [{ oldStart: 2, oldCount: 1, newCount: 1 }],
+    },
+    "One. ([validated by](../../src/a.ts#L2))",
+  );
+
+  assert.deepEqual(findings, [
+    {
+      docLine: 1,
+      kind: "unmapped",
+      detail:
+        "../../src/a.ts#L2 -> #L2 was deleted or rewritten on this branch",
+    },
+  ]);
+});
+
+test("a reanchorer returns a rotten finding for an in-scope link on a closing line and none for an out-of-scope one", () => {
+  const source = "One. ([validated by](../../src/a.ts#L2))";
+  const workingFile = "a();\n});\n";
+
+  assert.deepEqual(
+    [
+      reanchorFindings({ workingFile }, source),
+      reanchorFindings({ workingFile, isChanged: false }, source),
+    ],
+    [
+      [
+        {
+          docLine: 1,
+          kind: "rotten",
+          detail: "../../src/a.ts#L2 -> #L2 lands on a blank or closing line",
+        },
+      ],
+      [],
+    ],
+  );
+});
+
+test("titleOfLabel names no test for a validated-by file:line label, with or without backticks or a stray opening bracket", () => {
+  assert.deepEqual(
+    [
+      titleOfLabel("validated by link-target-path:23"),
+      titleOfLabel("validated by `spend.test.ts:30`"),
+      titleOfLabel("validated by [`spend.test.ts:30`"),
+      titleOfLabel("validated by [adds numbers, then subtracts them"),
+      titleOfLabel("validated by retries at 10:30"),
+    ],
+    [null, null, null, null, "retries at 10:30"],
+  );
+});
+
+test("a reanchorer reports no finding for a validated-by file:line label whose test title it never claimed", () => {
+  const findings = reanchorFindings(
+    { workingFile: 'it("adds numbers", () => {});\n' },
+    "One. ([validated by add:1](../../tests/a.test.ts#L1))",
+  );
+
+  assert.deepEqual(findings, []);
+});
