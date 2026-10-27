@@ -104,9 +104,25 @@ export interface ReanchorDocument {
   baseSource: string | null;
 }
 
+/** A link the re-anchor cannot repoint, found on `docLine` of the document. */
+export interface ReanchorFinding {
+  docLine: number;
+  kind: "unmapped" | "rotten";
+  detail: string;
+}
+
 export interface ReanchorResult {
   text: string;
   tally: ReanchorTally;
+  /** The unmapped links, and the rotten ones the branch is answerable for: a link into a file it did not change is not. */
+  findings: ReanchorFinding[];
+}
+
+// Where a link's outcome is recorded: the document's tally, its findings, and the line the link sits on.
+interface LinkRecord {
+  tally: ReanchorTally;
+  findings: ReanchorFinding[];
+  docLine: number;
 }
 
 export interface ReanchorReport {
@@ -626,11 +642,12 @@ export function createReanchorer(
   const rewriteLink = (
     written: AnchorLink,
     docPath: string,
-    tally: ReanchorTally,
+    { tally, findings, docLine }: LinkRecord,
   ): string => {
     const link = locate(written);
     const resolution = resolve(link);
-    const where = `${docPath}: ${link.linkPath}#L${link.line}`;
+    const here = `${link.linkPath}#L${link.line}`;
+    const where = `${docPath}: ${here}`;
     const line = "line" in resolution ? resolution.line : link.line;
 
     if ("outOfScope" in resolution) {
@@ -639,6 +656,11 @@ export function createReanchorer(
       tally.authored += 1;
     } else if ("failure" in resolution) {
       tally.reports.unmapped.push(`${where} -> ${resolution.failure}`);
+      findings.push({
+        docLine,
+        kind: "unmapped",
+        detail: `${here} -> ${resolution.failure}`,
+      });
     } else if (line === link.line) {
       tally.upToDate += 1;
     } else {
@@ -653,6 +675,14 @@ export function createReanchorer(
 
     if (reason !== null) {
       tally.reports.rotten.push(`${where} -> ${reason}`);
+
+      if (!("outOfScope" in resolution)) {
+        findings.push({
+          docLine,
+          kind: "rotten",
+          detail: `${here} -> ${reason}`,
+        });
+      }
     }
 
     if (syncedLabel(link.label, link.line) !== link.label) {
@@ -677,22 +707,27 @@ export function createReanchorer(
       workingLines,
     );
     const tally = emptyTally();
+    const findings: ReanchorFinding[] = [];
     const rewritten = workingLines.map((text, lineIndex) => {
       let position = -1;
 
       return text.replace(ANCHOR_LINK, (whole) => {
         position += 1;
-        const replacement = rewriteLink(
-          links[lineIndex][position],
-          docPath,
+        const replacement = rewriteLink(links[lineIndex][position], docPath, {
           tally,
-        );
+          findings,
+          docLine: lineIndex + 1,
+        });
 
         return options.check ? whole : replacement;
       });
     });
 
-    return { text: options.check ? source : rewritten.join("\n"), tally };
+    return {
+      text: options.check ? source : rewritten.join("\n"),
+      tally,
+      findings,
+    };
   };
 }
 

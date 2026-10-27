@@ -1,3 +1,5 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { RuleTester } from "eslint";
@@ -216,4 +218,11 @@ ruleTester.run("require-spec-link", rule, {
       ],
     },
   ],
+});
+
+test("misanchoredLink names the spec to run eslint --fix on and falls back to a by-hand repoint to the test's line", () => {
+  assert.match(
+    rule.meta.messages.misanchoredLink,
+    /run `eslint --fix` on the spec[^.]*; if no-stale-spec-links reports the link unhealable, repoint it by hand to #L\{\{line\}\}/,
+  );
 });

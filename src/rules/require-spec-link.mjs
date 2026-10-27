@@ -250,7 +250,7 @@ export default {
       unlinkedTest:
         "Test {{name}} has no spec link — add an inline ([validated by]({{file}}#L{{line}})) to the statement it validates in a {{roots}} markdown file (or, if this test isn't tied to a spec statement, it may not belong in the traceable suite).",
       misanchoredLink:
-        "Test {{name}} is named by a link in {{spec}} whose anchor #L{{anchor}} lies outside it, so the link counts for no test — repoint it to #L{{line}} (`eslint --fix` with no-stale-spec-links moves an anchor that landed in another test).",
+        "Test {{name}} is named by a link in {{spec}} whose anchor #L{{anchor}} lies outside it, so the link counts for no test — run `eslint --fix` on the spec (no-stale-spec-links moves an anchor that landed in another test); if no-stale-spec-links reports the link unhealable, repoint it by hand to #L{{line}}.",
     },
   },
 

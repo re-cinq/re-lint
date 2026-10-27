@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- `no-stale-spec-links` reports a link it cannot repoint (`unhealableLink`),
+  on the spec line with the reason, and no longer stays silent about it: a
+  title no test carries or several carry, a cited line the branch rewrote, an
+  anchor on a blank or closing line in a file the branch changed. A rotten
+  anchor into a file the branch did not change is not reported. Before, such a
+  link surfaced only as `require-spec-link` on the test, with a hint to run
+  `eslint --fix` that could not help. A new error on specs that carried such
+  links unnoticed.
+- `require-spec-link`'s `misanchoredLink` says to run `eslint --fix` on the
+  spec and to repoint by hand when `no-stale-spec-links` reports the link
+  unhealable.
 - A test declaration whose title sits below its opening line is read: a title
   prettier wrapped onto the next line (`it(\n  "title",`) and an `it.each`
   whose table spans several lines. The declaration stays at its opening line,

@@ -61,6 +61,7 @@ const committedSpec = (name, content) => {
 
 const MATHS = "tests/maths.test.ts";
 const UNTOUCHED = "tests/untouched.test.ts";
+const REWRITTEN = "tests/rewritten.test.ts";
 
 const upToDate = committedSpec(
   "up-to-date",
@@ -91,13 +92,27 @@ const shortLabelInNeighbour = committedSpec(
   spec(titled("pending waits", UNTOUCHED, 5)),
 );
 const bareLabel = committedSpec("bare-label", spec(link("L2", MATHS, 2)));
+const absentTitle = committedSpec(
+  "absent-title",
+  spec(titled("multiplies numbers", MATHS, 2)),
+);
+const rewrittenLine = committedSpec(
+  "rewritten-line",
+  spec(link("validated by", REWRITTEN, 3)),
+);
+const rottenUntouched = committedSpec(
+  "rotten-untouched",
+  spec(link("validated by", UNTOUCHED, 4)),
+);
 
 write(MATHS, MATHS_TEST);
 write(UNTOUCHED, MATHS_TEST);
+write(REWRITTEN, MATHS_TEST);
 git("add", "-A");
 git("commit", "-q", "-m", "base");
 // The branch under test inserts a header above every test in maths.test.ts.
 write(MATHS, HEADER + MATHS_TEST);
+write(REWRITTEN, MATHS_TEST.replace("expect(1 + 1)", "expect(2 + 2)"));
 
 const withBase = { baseRef: "main" };
 const ruleTester = new RuleTester({
@@ -113,6 +128,8 @@ ruleTester.run("no-stale-spec-links", rule, {
     { ...unchangedFileStale, options: [withBase] },
     // a label naming no test keeps its anchor wherever it lands
     { ...shortLabelInNeighbour, options: [withBase] },
+    // a rotten anchor into a file the branch did not change is not this branch's
+    { ...rottenUntouched, options: [withBase] },
     // ... and with no merge base there is nothing to compare against
     { ...moved, options: [{ baseRef: "no-such-ref" }] },
     // a document outside any git work tree
@@ -189,6 +206,36 @@ ruleTester.run("no-stale-spec-links", rule, {
         },
       ],
       output: spec(titled("adds numbers", UNTOUCHED, 2)),
+    },
+    {
+      // no test carries the title, so nothing can be repointed: reported, not fixed
+      ...absentTitle,
+      options: [withBase],
+      errors: [
+        {
+          messageId: "unhealableLink",
+          line: 3,
+          data: {
+            detail: `${MATHS}#L2 -> no test in ${MATHS} carries the title "multiplies numbers"`,
+          },
+        },
+      ],
+      output: null,
+    },
+    {
+      // an untitled link whose cited line the branch rewrote has no line to follow
+      ...rewrittenLine,
+      options: [withBase],
+      errors: [
+        {
+          messageId: "unhealableLink",
+          line: 3,
+          data: {
+            detail: `${REWRITTEN}#L3 -> #L3 was deleted or rewritten on this branch`,
+          },
+        },
+      ],
+      output: null,
     },
   ],
 });

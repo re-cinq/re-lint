@@ -16,8 +16,10 @@
  * `require-spec-link`: a long-lived ESLint server will not see a commit made
  * after the first lint until it restarts.
  *
- * Reports only links it can repoint. A title no test carries, or an anchor on a
- * blank line, is left to `re-lint-reanchor --check`.
+ * A link it cannot repoint is reported without a fix, on the spec line, with
+ * the reason: a title no test carries or several carry, a cited line the branch
+ * rewrote, an anchor on a blank or closing line. A rotten anchor counts only in
+ * a file the branch changed, so a pull request is not blamed for old debt.
  */
 
 import { dirname, relative } from "node:path";
@@ -82,7 +84,10 @@ function staleLines(source, rewritten) {
 function reportStale(context, { root, base, all }) {
   const source = context.sourceCode.getText();
   const docPath = toPosix(relative(root, context.filename));
-  const { text } = createReanchorer(base.repository, { check: false, all })({
+  const { text, findings } = createReanchorer(base.repository, {
+    check: false,
+    all,
+  })({
     docPath,
     source,
     baseSource: baseCopyOf(root, base.mergeBase, docPath),
@@ -95,6 +100,14 @@ function reportStale(context, { root, base, all }) {
       data: { moved: movedAnchors(stale.before, stale.after) },
       fix: (fixer) =>
         fixer.replaceTextRange(lineRange(source, stale.line), stale.after),
+    });
+  }
+
+  for (const { docLine, detail } of findings) {
+    context.report({
+      loc: { line: docLine, column: 1 },
+      messageId: "unhealableLink",
+      data: { detail },
     });
   }
 }
@@ -120,6 +133,8 @@ export default {
     messages: {
       staleLink:
         "Spec link anchors are out of date: {{moved}}. Run `eslint --fix` (or `npx re-lint-reanchor`) to repoint them.",
+      unhealableLink:
+        "Spec link cannot be repointed automatically: {{detail}}. Repoint it by hand to the line of the test it validates.",
     },
   },
 
