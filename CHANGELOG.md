@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.11.0
+
+- A `validated by` or `implemented by` title that only a `test.describe()`,
+  `test.suite()` or `test.step()` carries now reads as a title no test carries.
+  Such a link used to pass, though a suite or a step asserts nothing of its own.
+  `re-lint-reanchor` and `no-stale-spec-links` report it, which is a new error
+  on a spec that cites one. A bare label naming one is mapped through the diff
+  hunks like any other link.
+
 ## 1.10.0
 
 - `no-stale-spec-links` reports a link it cannot repoint (`unhealableLink`),

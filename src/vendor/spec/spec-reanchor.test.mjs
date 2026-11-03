@@ -292,6 +292,71 @@ test("spansCover lands L3 and L5 in a span and L1 and L9 outside it", () => {
   );
 });
 
+test("findTestDeclarations names the tests inside a test.describe, test.suite and test.step, and none of those three", () => {
+  const source = [
+    'test.describe("the composer", () => {',
+    '  test("resizes on input", async ({ page }) => {',
+    '    await test.step("types a line", async () => {});',
+    "  });",
+    "});",
+    'test.describe.only("the header", () => {});',
+    'test.describe.parallel.only("the footer", () => {});',
+    'test.suite("the sidebar", () => {});',
+    'test.step.skip("a skipped step", async () => {});',
+  ].join("\n");
+
+  assert.deepEqual(findTestDeclarations(source), [
+    { title: "resizes on input", line: 2 },
+  ]);
+});
+
+test("findTestDeclarations names no test.describe whose title prettier wrapped below it", () => {
+  const source = ["test.describe(", '  "the composer",', "  () => {});"].join(
+    "\n",
+  );
+
+  assert.deepEqual(findTestDeclarations(source), []);
+});
+
+test("findTestDeclarations keeps test.describeTable, a helper whose name only starts with describe", () => {
+  assert.deepEqual(
+    findTestDeclarations('test.describeTable("a table", () => {});\n'),
+    [{ title: "a table", line: 1 }],
+  );
+});
+
+test("declarationSpans still ends a test at a following test.describe", () => {
+  const source = [
+    'test("a", () => {});',
+    "",
+    'test.describe("b", () => {});',
+  ].join("\n");
+
+  assert.equal(declarationSpans(source)[0].end, 3);
+});
+
+test("a reanchorer reports a titled link whose title only a test.describe carries", () => {
+  const findings = reanchorFindings(
+    {
+      workingFile: [
+        'test.describe("the composer", () => {',
+        '  test("resizes on input", () => {});',
+        "});",
+      ].join("\n"),
+    },
+    "One. ([validated by the composer](../../tests/a.test.ts#L1))",
+  );
+
+  assert.deepEqual(findings, [
+    {
+      docLine: 1,
+      kind: "unmapped",
+      detail:
+        '../../tests/a.test.ts#L1 -> no test in tests/a.test.ts carries the title "the composer"',
+    },
+  ]);
+});
+
 test("findTestDeclarations reads the title of an it.each call", () => {
   const source = 'it.each([1, 2])("adds %s", () => {});';
 

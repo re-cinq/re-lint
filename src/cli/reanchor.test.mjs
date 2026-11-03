@@ -273,6 +273,29 @@ describe("re-lint-reanchor", () => {
     assert.equal(read(repo, SPEC_PATH), spec);
   });
 
+  it("reports a titled link whose title only a test.describe carries and exits 1 in both modes, rewriting nothing", () => {
+    const suite = [
+      'test.describe("the composer", () => {',
+      '  test("resizes on input", () => {',
+      "    expect(1 + 1).toBe(2);",
+      "  });",
+      "});",
+    ];
+    const spec = asSpec(link("validated by the composer", "1"));
+    const repo = repoWith(spec, suite);
+
+    const check = run(repo, "--all", "--check", "main");
+    const rewrite = run(repo, "--all", "main");
+
+    const finding =
+      'no test in tests/Maths.test.ts carries the title "the composer"';
+
+    assert.deepEqual([check.status, rewrite.status], [1, 1]);
+    assert.ok(check.stderr.includes(finding));
+    assert.ok(rewrite.stderr.includes(finding));
+    assert.equal(read(repo, SPEC_PATH), spec);
+  });
+
   it("reports an untitled link on a deleted line and exits 1 in both modes, rewriting nothing", () => {
     const spec = asSpec(link("validated by", "6"));
     const repo = repoWith(spec);

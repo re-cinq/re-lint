@@ -21,6 +21,10 @@ const DECLARATION = new RegExp(
   `${CALL_PREFIX}\\s*${EACH_TABLE}?\\s*\\(\\s*(['"\`])((?:\\\\.|(?!\\1).)*)\\1`,
 );
 const TEST_OPENING = new RegExp(`${CALL_PREFIX}\\s*(?:\\(|\`)`);
+// `test.describe(` and `await test.step(` open like a test and still bound a span, but a suite or a step is no test of its own: nothing it titles can stand as a statement's evidence.
+const GROUPING_OPENING = new RegExp(
+  `${CALL_PREFIX}\\.(?:describe|suite|step)\\b`,
+);
 const SUITE_OPENING =
   /^\s*(?:describe|suite)(?:\.[A-Za-z_$][\w$]*)*\s*(?:\(|`)/;
 const LABEL_PREFIX = /^(?:validated|implemented) by(?:\s+|$)/;
@@ -238,7 +242,10 @@ function declarationAt(
   sourceLines: readonly string[],
   index: number,
 ): TestDeclaration | null {
-  if (!TEST_OPENING.test(sourceLines[index])) {
+  if (
+    !TEST_OPENING.test(sourceLines[index]) ||
+    GROUPING_OPENING.test(sourceLines[index])
+  ) {
     return null;
   }
 
@@ -265,7 +272,7 @@ function declarationAt(
   return null;
 }
 
-/** Every `it()`/`test()` declaration in a test file's source, its title read from the opening line or the lines it wraps over. */
+/** Every `it()`/`test()` declaration in a test file's source, its title read from the opening line or the lines it wraps over. `test.describe()`, `test.suite()` and `test.step()` are not declarations. */
 export function findTestDeclarations(source: string): TestDeclaration[] {
   const sourceLines = lines(source);
 

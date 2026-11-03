@@ -472,7 +472,9 @@ npx re-lint-reanchor --all develop
   diff, it still lies in that test. A title two tests carry is reported, as is
   a `validated by` or `implemented by` title no test in the cited file
   carries; a bare label naming no test is mapped like any other link. A title
-  in backticks is unwrapped, and a `file.test.ts:NN` label names no test.
+  only a `test.describe()`, `test.suite()` or `test.step()` carries is one no
+  test carries, since those assert nothing of their own. A title in backticks
+  is unwrapped, and a `file.test.ts:NN` label names no test.
 - Every other `[label](path#Lnn)` link is paired with its copy in the merge
   base's version of the markdown and mapped through the cited file's
   `git diff -U0` hunks since `git merge-base <base-ref> HEAD` (plus
