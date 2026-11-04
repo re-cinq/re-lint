@@ -305,7 +305,8 @@ lands inside it. An anchor that drifted into a neighbouring test is reported on
 the test the label names, and no longer passes the neighbour off as linked, so
 a run shows every test left unlinked by a shift at once. A label that names no
 test of the file, such as `[validated by pending waits]`, links whichever test
-its anchor lands in, as before.
+its anchor lands in, as before. A `test.describe()`, `test.suite()` or
+`test.step()` is not a test here either, so it needs no link of its own.
 
 `require-status-matches-coverage` fixes its own report by rewriting the status
 row to the one the evidence supports, in both directions: a spec that gained an
@@ -472,6 +473,9 @@ npx re-lint-reanchor --all develop
   diff, it still lies in that test. A title two tests carry is reported, as is
   a `validated by` or `implemented by` title no test in the cited file
   carries; a bare label naming no test is mapped like any other link. A title
+  only a `test.describe()`, `test.suite()` or `test.step()` carries is one no
+  test carries: a suite only groups tests and a step runs only inside one, so
+  cite an `it()`/`test()` the suite groups, or the one the step runs in. A title
   in backticks is unwrapped, and a `file.test.ts:NN` label names no test.
 - Every other `[label](path#Lnn)` link is paired with its copy in the merge
   base's version of the markdown and mapped through the cited file's

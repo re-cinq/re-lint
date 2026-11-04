@@ -99,11 +99,30 @@ function rootCallName(callee) {
   return null;
 }
 
+const GROUPING_CALLS = new Set(["describe", "suite", "step"]);
+
+/** `test.describe()`, `test.suite()` or `test.step()`, in any modifier chain: a suite groups tests and a step runs inside one, so neither is a test of its own, as `re-lint-reanchor` reads them. */
+function isGroupingCall(callee) {
+  let node = callee;
+
+  while (node) {
+    if (
+      node.type === "MemberExpression" &&
+      GROUPING_CALLS.has(node.property.name)
+    ) {
+      return true;
+    }
+    node = node.object ?? node.callee ?? node.tag;
+  }
+
+  return false;
+}
+
 /** A named test declaration: `it`/`test` (any modifier chain) with a string name. */
 function isNamedTestCall(node) {
   const root = rootCallName(node.callee);
 
-  if (root !== "it" && root !== "test") {
+  if ((root !== "it" && root !== "test") || isGroupingCall(node.callee)) {
     return false;
   }
   const first = node.arguments[0];

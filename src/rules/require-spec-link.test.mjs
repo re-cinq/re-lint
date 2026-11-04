@@ -50,6 +50,19 @@ const ruleTester = new RuleTester({
 ruleTester.run("require-spec-link", rule, {
   valid: [
     {
+      // a suite and a step are no test of their own, in any modifier chain
+      code: [
+        'test.describe("a suite", () => {});',
+        'test.describe.only("b suite", () => {});',
+        'test.describe.each([1])("c suite %s", () => {});',
+        'test.suite("d suite", () => {});',
+        'await test.step("a step", async () => {});',
+        'test.step.skip("b step", async () => {});',
+      ].join("\n"),
+      filename: file("tests/orphan.test.ts"),
+      options: OPTS,
+    },
+    {
       // a spec.md links this test at line 2
       code: `describe("x", () => {\n  it("works", () => {});\n});`,
       filename: file("tests/linked.test.ts"),
@@ -93,6 +106,13 @@ ruleTester.run("require-spec-link", rule, {
     },
   ],
   invalid: [
+    {
+      // a test.describe needs no link, and the test inside it still does
+      code: 'test.describe("a suite", () => {\n  test("inner", () => {});\n});',
+      filename: file("tests/orphan.test.ts"),
+      options: OPTS,
+      errors: [{ messageId: "unlinkedTest", line: 2 }],
+    },
     {
       // "adds numbers" is named by a link whose L5 anchor lands in "subtracts
       // numbers": the link counts for neither, and both are reported
