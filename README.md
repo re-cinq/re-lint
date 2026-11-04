@@ -475,8 +475,8 @@ npx re-lint-reanchor --all develop
   carries; a bare label naming no test is mapped like any other link. A title
   only a `test.describe()`, `test.suite()` or `test.step()` carries is one no
   test carries: a suite only groups tests and a step runs only inside one, so
-  cite the enclosing `it()`/`test()`. A title in backticks is unwrapped, and a
-  `file.test.ts:NN` label names no test.
+  cite an `it()`/`test()` the suite groups, or the one the step runs in. A title
+  in backticks is unwrapped, and a `file.test.ts:NN` label names no test.
 - Every other `[label](path#Lnn)` link is paired with its copy in the merge
   base's version of the markdown and mapped through the cited file's
   `git diff -U0` hunks since `git merge-base <base-ref> HEAD` (plus
