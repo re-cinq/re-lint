@@ -100,7 +100,7 @@ test("splitHashedLabel finds no hash in a file:line label, a bare prefix or a 7-
   );
 });
 
-test("withAnchorHash appends inside backticks, after a prefix, and replaces an old hash", () => {
+test("withAnchorHash trades a file label's line for the hash, appends after a prefix, and replaces an old hash", () => {
   assert.deepEqual(
     [
       withAnchorHash("`x.test.ts:196`", "a3f9c1d2"),
@@ -108,7 +108,7 @@ test("withAnchorHash appends inside backticks, after a prefix, and replaces an o
       withAnchorHash("`x.test.ts@00000000`", "a3f9c1d2"),
     ],
     [
-      "`x.test.ts:196@a3f9c1d2`",
+      "`x.test.ts@a3f9c1d2`",
       "validated by @a3f9c1d2",
       "`x.test.ts@a3f9c1d2`",
     ],

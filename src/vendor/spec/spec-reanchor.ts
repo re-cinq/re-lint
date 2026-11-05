@@ -36,7 +36,8 @@ const GROUPING_OPENING = new RegExp(
 const SUITE_OPENING =
   /^\s*(?:describe|suite)(?:\.[A-Za-z_$][\w$]*)*\s*(?:\(|`)/;
 const LABEL_PREFIX = /^(?:validated|implemented) by(?:\s+|$)/;
-const BASENAME_LABEL = /^[^`\s/]+\.(?:test|spec)\.[cm]?[jt]sx?:\d+$/;
+// A test file named where a title belongs, with or without its line: `name.test.ts:23`, `name.test.ts` (the form a hashed label keeps).
+const BASENAME_LABEL = /^[^`\s/]+\.(?:test|spec)\.[cm]?[jt]sx?(?::\d+)?$/;
 const LINE_LABEL = /^L\d+$/;
 // A file and line written where a title belongs: `name:23`, `` `name.test.ts:23` ``, either with a stray opening bracket.
 const FILE_LINE_LABEL = /^[^\s]+:\d+$/;

@@ -267,3 +267,19 @@ test("scores the same line 1 and lines sharing no character pair 0", () => {
     [1, 0],
   );
 });
+
+test("reads no title from a hashed file label, so the link is never looked up as a test called maths.test.ts", () => {
+  assert.equal(titleOfLabel("`maths.test.ts@a3f9c1d2`"), null);
+});
+
+test("trades the stale :2 of a file label for the hash when it adds one", () => {
+  const result = reanchorHashed(
+    fakeRepository({ working: { [TEST_PATH]: BASE } }),
+    statement("`a.test.ts:2`", 2),
+  );
+
+  assert.equal(
+    result.text,
+    statement(`\`a.test.ts@${anchorHashOf(ADDS)}\``, 2),
+  );
+});
