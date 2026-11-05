@@ -21,6 +21,9 @@
   fix. The `specs` preset now runs `no-stale-spec-links` as a warning with
   `reportUnhealable: false` and this rule as an error, so a branch fails only
   on a link a person must repoint.
+- `require-spec-link` reads a hashed link at the line of the test file that
+  carries its hash, so a branch that moves a test keeps its link counting while
+  the `#L` waits for a later repointing pass.
 - `re-lint-reanchor` takes `--hash`, `--hash-all` and `--authored`, the same
   three choices. Its summary line ends with `hashed` (`unhashed` under
   `--check`) and `renamed` counts. `--check` without `--hash` behaves as before.

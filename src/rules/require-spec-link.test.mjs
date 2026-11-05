@@ -63,6 +63,19 @@ ruleTester.run("require-spec-link", rule, {
       options: OPTS,
     },
     {
+      // specs/hashed links this test at #L2 by its hash; three lines inserted above moved it to L5
+      code: [
+        "const one = 1;",
+        "const two = 2;",
+        "const three = 3;",
+        'describe("x", () => {',
+        '  it("moved below new helpers", () => {});',
+        "});",
+      ].join("\n"),
+      filename: file("tests/hashed.test.ts"),
+      options: OPTS,
+    },
+    {
       // a spec.md links this test at line 2
       code: `describe("x", () => {\n  it("works", () => {});\n});`,
       filename: file("tests/linked.test.ts"),
