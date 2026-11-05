@@ -107,11 +107,7 @@ test("withAnchorHash trades a file label's line for the hash, appends after a pr
       withAnchorHash("validated by", "a3f9c1d2"),
       withAnchorHash("`x.test.ts@00000000`", "a3f9c1d2"),
     ],
-    [
-      "`x.test.ts@a3f9c1d2`",
-      "validated by @a3f9c1d2",
-      "`x.test.ts@a3f9c1d2`",
-    ],
+    ["`x.test.ts@a3f9c1d2`", "validated by @a3f9c1d2", "`x.test.ts@a3f9c1d2`"],
   );
 });
 
@@ -129,4 +125,27 @@ test("parseTestLinksInStatement reads the hash of a hashed link", () => {
       },
     ],
   );
+});
+
+test("withAnchorHash puts the hash inside a closing code span after a prefix, dropping its :38", () => {
+  assert.equal(
+    withAnchorHash("validated by `agents-api.test.ts:38`", "a3f9c1d2"),
+    "validated by `agents-api.test.ts@a3f9c1d2`",
+  );
+});
+
+test("withAnchorHash rewrites a bare file label and its own output the same way", () => {
+  const once = withAnchorHash("agents-api.test.ts:286", "a3f9c1d2");
+
+  assert.deepEqual(
+    [once, withAnchorHash(once, "a3f9c1d2")],
+    ["agents-api.test.ts@a3f9c1d2", "agents-api.test.ts@a3f9c1d2"],
+  );
+});
+
+test("splitHashedLabel reads the hash inside a code span that follows a prefix", () => {
+  assert.deepEqual(splitHashedLabel("validated by `a.test.ts@a3f9c1d2`"), {
+    text: "validated by `a.test.ts`",
+    hash: "a3f9c1d2",
+  });
 });

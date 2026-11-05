@@ -204,7 +204,7 @@ ruleTester.run("no-stale-spec-links", rule, {
       ...bareLabel,
       options: [withBase],
       errors: [{ messageId: "staleLink", line: 3 }],
-      output: spec(link(`L5 @${hashAt(MOVED_MATHS, 5)}`, MATHS, 5)),
+      output: spec(link(`L5@${hashAt(MOVED_MATHS, 5)}`, MATHS, 5)),
     },
     {
       // a titled anchor that landed in another test moves to its own test,
