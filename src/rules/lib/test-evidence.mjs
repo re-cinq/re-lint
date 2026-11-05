@@ -6,7 +6,9 @@
  * A link is grounded when its target file resolves inside the repository and
  * its `#Lnn` lands inside an `it()`/`test()` declaration (`declarationSpans`,
  * the same scan `re-lint-reanchor` relocates links with, so the two cannot
- * disagree about where a test begins). A whole-file link needs only the file,
+ * disagree about where a test begins). A link carrying a content hash is read
+ * at the line that carries it, nearest its `#Lnn`: a branch that moved the test
+ * leaves the link evidence while its anchor waits to be repointed. A whole-file link needs only the file,
  * and so does a test in a language with no `it()` to scan (`_test.go`,
  * `test_*.py`). A link to another repository's test, written as a URL, cannot be
  * checked from this checkout and is trusted, as every link was before. Nothing here runs a test: CI already fails a red PR.
@@ -27,6 +29,7 @@ import {
   spansCover,
 } from "./spec-parsers.mjs";
 import { toPosix } from "./spec-link-index.mjs";
+import { linesWithHash, nearestLine } from "#spec/anchor-hash.js";
 import { workTreeRoot } from "./git-worktree.mjs";
 
 const SCANNABLE_EXTENSIONS = new Set([
@@ -42,14 +45,23 @@ const SCANNABLE_EXTENSIONS = new Set([
 
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
-const spansByFile = new Map();
+const sourcesByFile = new Map();
 
-function spansOf(file) {
-  if (!spansByFile.has(file)) {
-    spansByFile.set(file, declarationSpans(readFileSync(file, "utf8")));
+function sourceOf(file) {
+  if (!sourcesByFile.has(file)) {
+    const text = readFileSync(file, "utf8");
+
+    sourcesByFile.set(file, { text, spans: declarationSpans(text) });
   }
 
-  return spansByFile.get(file);
+  return sourcesByFile.get(file);
+}
+
+// The line a link means: the one carrying its hash nearest its #Lnn, else its #Lnn.
+function meantLine(link, text) {
+  return link.hash
+    ? (nearestLine(linesWithHash(text, link.hash), link.line) ?? link.line)
+    : link.line;
 }
 
 /** A target that only resolves outside `root` is dead inside the repo. */
@@ -61,7 +73,7 @@ function fileInRepo(root, repoPath) {
 }
 
 /**
- * @param {{ path: string, line: number | null }} link
+ * @param {{ path: string, line: number | null, hash?: string | null }} link
  * @param {{ root: string, specPath: string }} where root = repo root, specPath = repo-relative path of the linking document
  */
 export function isGroundedLink(link, { root, specPath }) {
@@ -78,7 +90,9 @@ export function isGroundedLink(link, { root, specPath }) {
     return true;
   }
 
-  return spansCover(spansOf(file), link.line);
+  const { text, spans } = sourceOf(file);
+
+  return spansCover(spans, meantLine(link, text));
 }
 
 /** The predicate `statementCoverage` takes as `isGroundedLink`. */
@@ -110,5 +124,5 @@ export function groundingFor(context) {
 }
 
 export function resetEvidenceCache() {
-  spansByFile.clear();
+  sourcesByFile.clear();
 }

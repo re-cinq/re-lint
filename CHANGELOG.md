@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.12.1
+
+- `require-statement-links` and `require-status-matches-coverage` read a hashed
+  link at the line of the test file that carries its hash, as
+  `require-spec-link` does. A branch that moved a test used to turn the links
+  to it into non-evidence until they were repointed, and `eslint --fix` then
+  flipped a fully linked spec's Status from Shipped to In Progress.
+
 ## 1.12.0
 
 - A spec link can carry the content hash of the line it cites:
