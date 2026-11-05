@@ -7,6 +7,8 @@ import {
   isGroundedLink,
   resetEvidenceCache,
 } from "./test-evidence.mjs";
+import { readFileSync } from "node:fs";
+import { anchorHashOf } from "#spec/anchor-hash.js";
 
 const ROOT = resolve("test-fixtures/require-status-matches-coverage");
 const SPEC_PATH = "specs/payments/spec.md";
@@ -105,4 +107,23 @@ test("groundingFor resolves a repo-relative link against the work tree root when
   };
 
   assert.equal(groundingFor(context).isGroundedLink(link), true);
+});
+
+test("grounds a link at stale L1 by its hash, which grounded.test.ts carries on L5", () => {
+  const line5 = readFileSync(`${ROOT}/tests/grounded.test.ts`, "utf8").split(
+    "\n",
+  )[4];
+
+  assert.equal(
+    isGroundedLink(
+      {
+        label: "validated by",
+        path: "tests/grounded.test.ts",
+        line: 1,
+        hash: anchorHashOf(line5),
+      },
+      where,
+    ),
+    true,
+  );
 });
