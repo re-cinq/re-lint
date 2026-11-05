@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.12.2
+
+- Under `scope: "authored"`, a link on a spec line the branch wrote is fixed
+  even when the test file it cites did not change: it gets its content hash.
+  Before, a link written to an unchanged test stayed without one until a later
+  pass.
+
 ## 1.12.1
 
 - `require-statement-links` and `require-status-matches-coverage` read a hashed

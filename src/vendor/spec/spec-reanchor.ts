@@ -787,7 +787,11 @@ export function createReanchorer(
   };
 
   const resolve = (link: AnchorLink): Resolution => {
-    const inScope = options.all || repository.isChanged(link.target);
+    // A link on a line the branch wrote is the branch's to get right, whatever file it cites.
+    const inScope =
+      options.all ||
+      (options.authoredOnly === true && link.edited) ||
+      repository.isChanged(link.target);
 
     if (link.hash !== null) {
       return inScope ? byHash(link, link.hash) : { outOfScope: true };
