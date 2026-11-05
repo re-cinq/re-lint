@@ -3,7 +3,7 @@
 ## 1.12.0
 
 - A spec link can carry the content hash of the line it cites:
-  `` [`maths.test.ts@1e7912b3`](tests/maths.test.ts#L42) `` or
+  ``[`maths.test.ts@1e7912b3`](tests/maths.test.ts#L42)`` or
   `[validated by adds numbers @1e7912b3](…#L42)`. The hash is the first 8 hex
   characters of the sha256 of the line lowercased with everything but `a-z0-9`
   removed, so it is the same in any language and through reformatting. A hashed
