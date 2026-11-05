@@ -27,6 +27,47 @@ export interface SpecLinkRef {
   path: string;
   /** Line number from a `#L42` anchor, or null when absent. */
   line: number | null;
+  /** The content hash of the cited line the label ends with (`@a3f9c1d2`), or null when it carries none. */
+  hash: string | null;
+}
+
+// A hash closes the label, or the code span that closes it: `name.test.ts@a3f9c1d2`, validated by `name@a3f9c1d2`, validated by its title @a3f9c1d2.
+const HASHED_LABEL_RE = /^([\s\S]*?)\s*@([0-9a-f]{8})(`?)$/;
+const LAST_CODE_SPAN_RE = /`([^`\s]+)`$/;
+const LINE_SUFFIX_RE = /:\d+$/;
+
+/** A label split into its text and the `@hash` it ends with, a closing backtick kept on the text. */
+export function splitHashedLabel(label: string): {
+  text: string;
+  hash: string | null;
+} {
+  const hashed = HASHED_LABEL_RE.exec(label);
+
+  return hashed
+    ? { text: `${hashed[1]}${hashed[3]}`, hash: hashed[2] }
+    : { text: label, hash: null };
+}
+
+/**
+ * The label carrying `hash` in place of any it had. The hash goes inside a closing code span
+ * (`` `name.test.ts@hash` ``), against a one-word label (`L5@hash`), or after the text with a
+ * space. A `name.test.ts:196` next to it trades its line for the hash: that line goes stale.
+ */
+export function withAnchorHash(label: string, hash: string): string {
+  const { text } = splitHashedLabel(label);
+  const span = LAST_CODE_SPAN_RE.exec(text);
+
+  if (span) {
+    const file = span[1].replace(LINE_SUFFIX_RE, "");
+
+    return `${text.slice(0, span.index)}\`${file}@${hash}\``;
+  }
+
+  if (text !== "" && !/\s/.test(text)) {
+    return `${text.replace(LINE_SUFFIX_RE, "")}@${hash}`;
+  }
+
+  return text === "" ? `@${hash}` : `${text} @${hash}`;
 }
 
 /** A link to a test file (VALIDATED_BY edge source). */
@@ -118,7 +159,7 @@ function linkRefFromMatch(match: RegExpMatchArray): SpecLinkRef {
     line = Number.isFinite(n) ? n : null;
   }
 
-  return { label, path, line };
+  return { label, path, line, hash: splitHashedLabel(label).hash };
 }
 
 function parseLinksInStatement(

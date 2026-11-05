@@ -1,5 +1,13 @@
 // Pure logic behind `re-lint-reanchor`: heals the `[label](path#Lnn)` links in spec markdown after a branch edits a cited file. Git and fs access stay in the CLI, behind `ReanchorRepository`.
 import { posix } from "node:path";
+import { anchorHashOf, linesWithHash, nearestLine } from "./anchor-hash.js";
+import {
+  findHash,
+  mostSimilar,
+  rewrittenInPlace,
+  type AnchorFile,
+} from "./anchor-heal.js";
+import { splitHashedLabel, withAnchorHash } from "./spec-link-parser.js";
 
 /** The documents a corpus scan reads when no pattern is given, in report order. */
 export const DEFAULT_CORPUS: readonly string[] = [
@@ -28,7 +36,8 @@ const GROUPING_OPENING = new RegExp(
 const SUITE_OPENING =
   /^\s*(?:describe|suite)(?:\.[A-Za-z_$][\w$]*)*\s*(?:\(|`)/;
 const LABEL_PREFIX = /^(?:validated|implemented) by(?:\s+|$)/;
-const BASENAME_LABEL = /^[^`\s/]+\.(?:test|spec)\.[cm]?[jt]sx?:\d+$/;
+// A test file named where a title belongs, with or without its line: `name.test.ts:23`, `name.test.ts` (the form a hashed label keeps).
+const BASENAME_LABEL = /^[^`\s/]+\.(?:test|spec)\.[cm]?[jt]sx?(?::\d+)?$/;
 const LINE_LABEL = /^L\d+$/;
 // A file and line written where a title belongs: `name:23`, `` `name.test.ts:23` ``, either with a stray opening bracket.
 const FILE_LINE_LABEL = /^[^\s]+:\d+$/;
@@ -39,6 +48,7 @@ const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm;
 export interface Hunk {
   oldStart: number;
   oldCount: number;
+  newStart: number;
   newCount: number;
 }
 
@@ -55,6 +65,10 @@ export interface AnchorLink {
   candidates: string[];
   /** The paired merge-base link's line, or null when the branch added the link. */
   baseLine: number | null;
+  /** The content hash the label ends with (`@a3f9c1d2`), or null. */
+  hash: string | null;
+  /** Whether the branch wrote the document line the link sits on: added it or changed it. */
+  edited: boolean;
 }
 
 /** The lines a test declaration owns: from its opening line up to, not including, the next test or suite opening. */
@@ -77,6 +91,10 @@ export interface ReanchorRepository {
   hunks(path: string): Hunk[];
   /** Whether the branch changed the file against the merge base. */
   isChanged(path: string): boolean;
+  /** The file as it stood at the merge base, or null when the branch added it. */
+  baseFile(path: string): string | null;
+  /** The paths git says the branch renamed `path` to. */
+  renamedTo(path: string): string[];
 }
 
 export interface ReanchorOptions {
@@ -84,11 +102,19 @@ export interface ReanchorOptions {
   check: boolean;
   /** Re-anchor links into files the branch did not change as well. */
   all: boolean;
+  /** Give a link without a content hash the hash of the line it lands on. */
+  addHashes?: boolean;
+  /** With `addHashes`, give a hash even to a link into a file the branch did not change. */
+  hashUnchanged?: boolean;
+  /** Touch only links on document lines the branch wrote; every other link is left for a later pass. */
+  authoredOnly?: boolean;
   testFilePattern?: RegExp;
 }
 
 export interface ReanchorReports {
   moved: string[];
+  hashed: string[];
+  renamed: string[];
   unmapped: string[];
   rotten: string[];
   mislabelled: string[];
@@ -96,6 +122,8 @@ export interface ReanchorReports {
 
 export interface ReanchorTally {
   moved: number;
+  hashed: number;
+  renamed: number;
   upToDate: number;
   authored: number;
   outOfScope: number;
@@ -141,7 +169,14 @@ type Resolution =
   | { outOfScope: true }
   | { authored: true }
   | { failure: string }
-  | { line: number };
+  | {
+      line: number;
+      /** Where the link now points, when its file was renamed. */
+      path?: string;
+      /** The hash of the line the link now names, when its test was renamed. */
+      hash?: string | null;
+      renamed?: boolean;
+    };
 
 const lines = (text: string): string[] => text.split("\n");
 
@@ -163,6 +198,7 @@ export function parseHunks(diff: string): Hunk[] {
   return [...diff.matchAll(HUNK_HEADER)].map((match) => ({
     oldStart: Number(match[1]),
     oldCount: match[2] === undefined ? 1 : Number(match[2]),
+    newStart: Number(match[3]),
     newCount: match[4] === undefined ? 1 : Number(match[4]),
   }));
 }
@@ -200,7 +236,9 @@ export function normalizeTitle(title: string): string {
  * null for an empty label, an `Lnn` label, a `file:NN` label and a label that opens with a stray bracket.
  */
 export function titleOfLabel(label: string): string | null {
-  const title = normalizeTitle(label.trim().replace(LABEL_PREFIX, ""));
+  const title = normalizeTitle(
+    splitHashedLabel(label.trim()).text.replace(LABEL_PREFIX, ""),
+  );
   const unnamed =
     title.length === 0 ||
     title.startsWith("[") ||
@@ -332,17 +370,25 @@ export function anchorLinksIn(
         target: candidates[0],
         candidates,
         baseLine: null,
+        hash: splitHashedLabel(match[1]).hash,
+        edited: true,
       };
     }),
   );
 }
 
-// Every #Lnn and [Lnnn] label blanked, so the re-anchor's own rewrites never unpair a line from its merge-base copy.
+// Every #Lnn, [Lnnn] label and @hash blanked, so the re-anchor's own rewrites never unpair a line from its merge-base copy.
 const comparable = (text: string): string =>
-  text.replace(/#L\d+\)/g, "#L)").replace(/\[L\d+\]\(/g, "[L](");
+  text
+    .replace(/#L\d+\)/g, "#L)")
+    .replace(/\s*@[0-9a-f]{8}(?=`?\]\()/g, "")
+    .replace(/\[L\d+\]\(/g, "[L](");
 
-const pairKey = (link: AnchorLink): string =>
-  `${LINE_LABEL.test(link.label) ? "L" : link.label}\0${link.target}`;
+const pairKey = (link: AnchorLink): string => {
+  const { text } = splitHashedLabel(link.label);
+
+  return `${LINE_LABEL.test(text) ? "L" : text}\0${link.target}`;
+};
 
 // Longest common subsequence of the two documents' comparable lines, as [baseIndex, workingIndex] pairs.
 function matchedLines(
@@ -404,13 +450,16 @@ export function pairWithBase(
   baseLines: readonly string[],
   workingLines: readonly string[],
 ): AnchorLink[][] {
-  const paired = workingLinks.map((onLine) =>
-    onLine.map((link) => ({ ...link, baseLine: null as number | null })),
+  const matched = matchedLines(baseLines, workingLines);
+  const unchanged = new Set(matched.map(([, workingIndex]) => workingIndex));
+  const paired = workingLinks.map((onLine, workingIndex) =>
+    onLine.map((link) => ({
+      ...link,
+      baseLine: null as number | null,
+      edited: !unchanged.has(workingIndex),
+    })),
   );
-  const anchors = [
-    ...matchedLines(baseLines, workingLines),
-    [baseLines.length, workingLines.length],
-  ];
+  const anchors = [...matched, [baseLines.length, workingLines.length]];
   let previous = [-1, -1];
 
   for (const [baseIndex, workingIndex] of anchors) {
@@ -457,9 +506,35 @@ export function rottenReason(
     : null;
 }
 
-/** The label a link should carry at `line`: a bare `Lnnn` follows its href, any other label stays. */
-export function syncedLabel(label: string, line: number): string {
-  return LINE_LABEL.test(label) ? `L${line}` : label;
+/** The label a link should carry at `line`: a bare `Lnnn` follows its href, any other label stays; given a hash, the label ends with it. */
+export function syncedLabel(
+  label: string,
+  line: number,
+  hash: string | null = null,
+): string {
+  const { text } = splitHashedLabel(label);
+  const synced = LINE_LABEL.test(text) ? `L${line}` : text;
+
+  if (hash !== null) {
+    return withAnchorHash(synced, hash);
+  }
+
+  return synced === text ? label : synced;
+}
+
+/** The href path for a link moved into `path`, written the way the old href was: climbing from the document, from the root, or bare. */
+export function relinkedPath(
+  linkPath: string,
+  path: string,
+  docPath: string,
+): string {
+  if (/^\.\.?\//.test(linkPath)) {
+    const climb = posix.relative(posix.dirname(docPath), path);
+
+    return climb.startsWith(".") ? climb : `./${climb}`;
+  }
+
+  return linkPath.startsWith("/") ? `/${path}` : path;
 }
 
 /** A glob with `**`, `*` and `?` as an anchored regular expression over repo-relative paths. */
@@ -498,11 +573,20 @@ export function selectCorpus(
 export function emptyTally(): ReanchorTally {
   return {
     moved: 0,
+    hashed: 0,
+    renamed: 0,
     upToDate: 0,
     authored: 0,
     outOfScope: 0,
     relabelled: 0,
-    reports: { moved: [], unmapped: [], rotten: [], mislabelled: [] },
+    reports: {
+      moved: [],
+      hashed: [],
+      renamed: [],
+      unmapped: [],
+      rotten: [],
+      mislabelled: [],
+    },
   };
 }
 
@@ -512,12 +596,16 @@ export function addTallies(
 ): ReanchorTally {
   return {
     moved: first.moved + second.moved,
+    hashed: first.hashed + second.hashed,
+    renamed: first.renamed + second.renamed,
     upToDate: first.upToDate + second.upToDate,
     authored: first.authored + second.authored,
     outOfScope: first.outOfScope + second.outOfScope,
     relabelled: first.relabelled + second.relabelled,
     reports: {
       moved: [...first.reports.moved, ...second.reports.moved],
+      hashed: [...first.reports.hashed, ...second.reports.hashed],
+      renamed: [...first.reports.renamed, ...second.reports.renamed],
       unmapped: [...first.reports.unmapped, ...second.reports.unmapped],
       rotten: [...first.reports.rotten, ...second.reports.rotten],
       mislabelled: [
@@ -647,10 +735,90 @@ export function createReanchorer(
     return stray ? { line: named } : null;
   };
 
-  const resolve = (link: AnchorLink): Resolution =>
-    !options.all && !repository.isChanged(link.target)
-      ? (strayTitled(link) ?? { outOfScope: true })
-      : (byTitle(link) ?? byHunks(link));
+  // The files a link may now point into: its own, then wherever the branch renamed it.
+  const filesFor = (target: string): AnchorFile[] =>
+    [target, ...repository.renamedTo(target)].flatMap((path) => {
+      const source = repository.workingFile(path);
+
+      return source === null ? [] : [{ path, source }];
+    });
+
+  // The line at the merge base that carried the link's hash, nearest where the link stood.
+  const oldLineOf = (link: AnchorLink, hash: string) => {
+    const base = repository.baseFile(link.target);
+    const line =
+      base === null
+        ? null
+        : nearestLine(linesWithHash(base, hash), link.baseLine ?? link.line);
+
+    return base === null || line === null
+      ? null
+      : { line, text: lines(base)[line - 1] };
+  };
+
+  // A hashed link: follow the hash; failing that, the line the branch rewrote it into, then the most similar line.
+  const byHash = (link: AnchorLink, hash: string): Resolution => {
+    const files = filesFor(link.target);
+    const found = findHash(files, hash, link.line);
+
+    if (found !== null) {
+      return { line: found.line, path: found.path };
+    }
+    const old = oldLineOf(link, hash);
+
+    if (old === null) {
+      return {
+        failure: `no line of ${link.target} carries @${hash}, here or at the merge base`,
+      };
+    }
+    const own = files.find((file) => file.path === link.target);
+    const healed =
+      (own && rewrittenInPlace(own, repository.hunks(link.target), old)) ??
+      mostSimilar(files, old.text);
+
+    return healed === null
+      ? { failure: `the line @${hash} named was rewritten beyond recognition` }
+      : {
+          line: healed.line,
+          path: healed.path,
+          hash: anchorHashOf(healed.text),
+          renamed: true,
+        };
+  };
+
+  const resolve = (link: AnchorLink): Resolution => {
+    const inScope = options.all || repository.isChanged(link.target);
+
+    if (link.hash !== null) {
+      return inScope ? byHash(link, link.hash) : { outOfScope: true };
+    }
+
+    return inScope
+      ? (byTitle(link) ?? byHunks(link))
+      : (strayTitled(link) ?? { outOfScope: true });
+  };
+
+  // The hash the link should carry at `line` of `path`: a new one when the test was renamed, its own, or a first one for a link without.
+  const hashFor = (
+    link: AnchorLink,
+    resolution: Resolution,
+    at: { path: string; line: number },
+  ): string | null => {
+    if ("hash" in resolution && resolution.hash) {
+      return resolution.hash;
+    }
+    const mayAddHash =
+      options.addHashes === true &&
+      !("failure" in resolution) &&
+      (!("outOfScope" in resolution) || options.hashUnchanged === true);
+
+    if (link.hash !== null || !mayAddHash) {
+      return link.hash;
+    }
+    const text = lines(repository.workingFile(at.path) ?? "")[at.line - 1];
+
+    return text === undefined ? null : anchorHashOf(text);
+  };
 
   const rewriteLink = (
     written: AnchorLink,
@@ -658,10 +826,24 @@ export function createReanchorer(
     { tally, findings, docLine }: LinkRecord,
   ): string => {
     const link = locate(written);
-    const resolution = resolve(link);
     const here = `${link.linkPath}#L${link.line}`;
     const where = `${docPath}: ${here}`;
+
+    if (options.authoredOnly === true && !link.edited) {
+      tally.outOfScope += 1;
+
+      return `[${link.label}](${here})`;
+    }
+    const resolution = resolve(link);
     const line = "line" in resolution ? resolution.line : link.line;
+    const path =
+      "line" in resolution && resolution.path ? resolution.path : link.target;
+    const linkPath =
+      path === link.target
+        ? link.linkPath
+        : relinkedPath(link.linkPath, path, docPath);
+    const hash = hashFor(link, resolution, { path, line });
+    const moved = line !== link.line || linkPath !== link.linkPath;
 
     if ("outOfScope" in resolution) {
       tally.outOfScope += 1;
@@ -674,17 +856,23 @@ export function createReanchorer(
         kind: "unmapped",
         detail: `${here} -> ${resolution.failure}`,
       });
-    } else if (line === link.line) {
-      tally.upToDate += 1;
-    } else {
+    } else if ("renamed" in resolution && resolution.renamed) {
+      tally.renamed += 1;
+      tally.reports.renamed.push(`${where} -> ${linkPath}#L${line} @${hash}`);
+    } else if (moved) {
       tally.moved += 1;
-      tally.reports.moved.push(`${where} -> #L${line}`);
+      tally.reports.moved.push(
+        `${where} -> ${linkPath === link.linkPath ? "" : linkPath}#L${line}`,
+      );
+    } else {
+      tally.upToDate += 1;
     }
-    const reason = rottenReason(
-      link.target,
-      repository.workingFile(link.target),
-      line,
-    );
+
+    if (link.hash === null && hash !== null) {
+      tally.hashed += 1;
+      tally.reports.hashed.push(`${where} -> @${hash}`);
+    }
+    const reason = rottenReason(path, repository.workingFile(path), line);
 
     if (reason !== null) {
       tally.reports.rotten.push(`${where} -> ${reason}`);
@@ -701,13 +889,13 @@ export function createReanchorer(
     if (syncedLabel(link.label, link.line) !== link.label) {
       tally.reports.mislabelled.push(`${where} -> label reads ${link.label}`);
     }
-    const label = syncedLabel(link.label, line);
+    const label = syncedLabel(link.label, line, hash);
 
-    if (label !== link.label) {
+    if (splitHashedLabel(label).text !== splitHashedLabel(link.label).text) {
       tally.relabelled += 1;
     }
 
-    return `[${label}](${link.linkPath}#L${line})`;
+    return `[${label}](${linkPath}#L${line})`;
   };
 
   return ({ docPath, source, baseSource }) => {
@@ -754,13 +942,20 @@ export function formatReanchorReport(
   const { reports } = tally;
   const findings: [string, string[]][] = [
     [movedWord, reports.moved],
+    [check ? "unhashed" : "hashed", reports.hashed],
+    ["renamed", reports.renamed],
     ["unmapped", reports.unmapped],
     ["rotten", reports.rotten],
     ...(check
       ? ([["mislabelled", reports.mislabelled]] as [string, string[]][])
       : []),
   ];
-  const stale = check && reports.moved.length + reports.mislabelled.length > 0;
+  const changes =
+    reports.moved.length +
+    reports.hashed.length +
+    reports.renamed.length +
+    reports.mislabelled.length;
+  const stale = check && changes > 0;
   const broken = reports.unmapped.length + reports.rotten.length > 0;
 
   return {
@@ -768,7 +963,8 @@ export function formatReanchorReport(
       `${movedWord}: ${tally.moved}, up to date: ${tally.upToDate}, ` +
       `kept as authored: ${tally.authored}, out of scope: ${tally.outOfScope}, ` +
       `unmapped: ${reports.unmapped.length}, rotten: ${reports.rotten.length}, ` +
-      `${labelWord}: ${check ? reports.mislabelled.length : tally.relabelled}\n`,
+      `${labelWord}: ${check ? reports.mislabelled.length : tally.relabelled}, ` +
+      `${check ? "unhashed" : "hashed"}: ${tally.hashed}, renamed: ${tally.renamed}\n`,
     stderr: findings.flatMap(([kind, details]) =>
       details.map((detail) => `${kind} ${detail}\n`),
     ),

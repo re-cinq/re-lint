@@ -21,8 +21,8 @@ const HUNKS = parseHunks(
 
 test("parseHunks reads an insertion at the top and a one-line rewrite", () => {
   assert.deepEqual(HUNKS, [
-    { oldStart: 0, oldCount: 0, newCount: 2 },
-    { oldStart: 5, oldCount: 1, newCount: 1 },
+    { oldStart: 0, oldCount: 0, newStart: 1, newCount: 2 },
+    { oldStart: 5, oldCount: 1, newStart: 7, newCount: 1 },
   ]);
 });
 
@@ -99,6 +99,8 @@ test("pairWithBase gives a reworded line's link the base line 6", () => {
     target: "a.test.ts",
     candidates: ["a.test.ts"],
     baseLine: 6,
+    hash: null,
+    edited: true,
   });
 });
 

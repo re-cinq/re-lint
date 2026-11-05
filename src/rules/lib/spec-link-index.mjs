@@ -7,7 +7,8 @@
  * — parsed by the canonical `linksForStatements` (reused here, not re-implemented).
  * Each test link contributes an anchor to that test path's entry: its `#Lline`,
  * the test title its label names (`titleOfLabel`, the same reading
- * `re-lint-reanchor` relocates links by) and the document it sits in; a link
+ * `re-lint-reanchor` relocates links by), the content hash its label ends with
+ * and the document it sits in; a link
  * with no `#L` anchor marks the whole file linked.
  *
  * Split out of the rule so the pure index (buildLinkIndex) and the filesystem
@@ -22,7 +23,7 @@ import {
   titleOfLabel,
 } from "./spec-parsers.mjs";
 
-/** @typedef {{ line: number, title: string | null, specPath: string }} LinkAnchor */
+/** @typedef {{ line: number, title: string | null, hash: string | null, specPath: string }} LinkAnchor */
 /** @typedef {{ anchors: LinkAnchor[], wholeFile: boolean }} LinkEntry */
 
 export function toPosix(filePath) {
@@ -61,6 +62,7 @@ function recordLink(index, { link, specPath }) {
   entry.anchors.push({
     line: link.line,
     title: titleOfLabel(link.label),
+    hash: link.hash,
     specPath,
   });
 }

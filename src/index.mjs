@@ -13,6 +13,7 @@ import noCommentedOutCode from "./rules/no-commented-out-code.mjs";
 import noCrossLayerImport from "./rules/no-cross-layer-import.mjs";
 import noDeadMdLinks from "./rules/no-dead-md-links.mjs";
 import noStaleSpecLinks from "./rules/no-stale-spec-links.mjs";
+import noRottenSpecLinks from "./rules/no-rotten-spec-links.mjs";
 import noUngroundedSpecName from "./rules/no-ungrounded-spec-name.mjs";
 import noDuplicateCode from "./rules/no-duplicate-code.mjs";
 import noFlagParams from "./rules/no-flag-params.mjs";
@@ -62,6 +63,7 @@ const rules = {
   "no-cross-layer-import": noCrossLayerImport,
   "no-dead-md-links": noDeadMdLinks,
   "no-stale-spec-links": noStaleSpecLinks,
+  "no-rotten-spec-links": noRottenSpecLinks,
   "no-ungrounded-spec-name": noUngroundedSpecName,
   "no-duplicate-code": noDuplicateCode,
   "no-flag-params": noFlagParams,
@@ -94,6 +96,12 @@ const rules = {
   "test-imports-its-subject": testImportsItsSubject,
 };
 
+// A link its content hash can repoint is a warning `eslint --fix` heals; only one nothing can repoint fails the branch.
+const SPEC_ANCHOR_RULES = {
+  "re-lint/no-stale-spec-links": ["warn", { reportUnhealable: false }],
+  "re-lint/no-rotten-spec-links": "error",
+};
+
 /**
  * Rules the preset leaves to the consumer: each needs repository-specific
  * options (a layout, a module specifier, a document corpus) or an extra
@@ -103,6 +111,7 @@ export const OPT_IN_RULES = [
   "no-cross-layer-import",
   "no-dead-md-links",
   "no-stale-spec-links",
+  "no-rotten-spec-links",
   "no-ungrounded-spec-name",
   "no-duplicate-code",
   "no-forbidden-imports",
@@ -301,7 +310,7 @@ function specs({ markdown } = {}) {
       markdown,
       "specs-anchors",
       ["specs/**/*.md", "adrs/**/*.md", ".specify/spec.md"],
-      { "re-lint/no-stale-spec-links": "error" },
+      SPEC_ANCHOR_RULES,
     ),
     {
       name: "re-lint/specs-tests",

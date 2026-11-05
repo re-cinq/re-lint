@@ -26,7 +26,9 @@ test("indexes a #Lnn test link as that line", () => {
   ]);
 
   assert.deepEqual(index.get("a.test.ts"), {
-    anchors: [{ line: 88, title: null, specPath: "specs/a/spec.md" }],
+    anchors: [
+      { line: 88, title: null, hash: null, specPath: "specs/a/spec.md" },
+    ],
     wholeFile: false,
   });
 });
@@ -40,7 +42,7 @@ test("indexes a validated-by link with the test title its label names", () => {
   ]);
 
   assert.deepEqual(index.get("a.test.ts").anchors, [
-    { line: 5, title: "adds numbers", specPath: "specs/a/spec.md" },
+    { line: 5, title: "adds numbers", hash: null, specPath: "specs/a/spec.md" },
   ]);
 });
 

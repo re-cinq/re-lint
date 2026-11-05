@@ -98,7 +98,10 @@ test("specs({ markdown }) wires the five document rules over specs and ADRs, the
         files: ["specs/**/*.md", "adrs/**/*.md", ".specify/spec.md"],
         language: "markdown/gfm",
         plugins: ["markdown", "re-lint"],
-        rules: { "re-lint/no-stale-spec-links": "error" },
+        rules: {
+          "re-lint/no-stale-spec-links": ["warn", { reportUnhealable: false }],
+          "re-lint/no-rotten-spec-links": "error",
+        },
       },
       {
         files: ["**/*.{test,spec}.{ts,tsx,mts,js,jsx,mjs}"],

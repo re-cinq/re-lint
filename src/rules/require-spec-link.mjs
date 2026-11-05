@@ -21,6 +21,7 @@
  * validates, not a codemod.
  */
 
+import { linesWithHash, nearestLine } from "#spec/anchor-hash.js";
 import path from "node:path";
 import { isTestFile, normalizeTitle } from "./lib/spec-parsers.mjs";
 import {
@@ -141,25 +142,39 @@ function isNamedTestCall(node) {
 const covers = (test, line) => line >= test.startLine && line <= test.endLine;
 
 /**
+ * The line a link means in this file: the line carrying its content hash,
+ * nearest its `#L`, or the `#L` itself when it has no hash or no line carries
+ * it. A branch that moves a test leaves a hashed link pointing at it, so the
+ * link still counts here while its `#L` waits for a later repointing pass.
+ */
+function meantLine(anchor, source) {
+  return anchor.hash === null
+    ? anchor.line
+    : (nearestLine(linesWithHash(source, anchor.hash), anchor.line) ??
+        anchor.line);
+}
+
+/**
  * The tests one anchor links, and the titled tests it misses. A link whose label
  * names a test in this file links that test alone, and only when its anchor
  * lands inside it; any other link reaches the test its anchor lands in.
  */
-function reachOf(tests, anchor) {
+function reachOf(tests, anchor, source) {
+  const line = meantLine(anchor, source);
   const titled = tests.filter((test) => test.title === anchor.title);
   const hits = (titled.length > 0 ? titled : tests).filter((test) =>
-    covers(test, anchor.line),
+    covers(test, line),
   );
 
   return { hits, missed: hits.length === 0 ? titled : [] };
 }
 
 /** Which tests the file's links reach, and the titled links that miss their test. */
-function resolveAnchors(tests, entry) {
+function resolveAnchors(tests, entry, source) {
   const anchors = entry?.anchors ?? [];
   const reaches = anchors.map((anchor) => ({
     anchor,
-    ...reachOf(tests, anchor),
+    ...reachOf(tests, anchor, source),
   }));
 
   return {
@@ -215,9 +230,7 @@ function testOf(sourceCode, node) {
   };
 }
 
-function reportTests(context, tests, corpus) {
-  const { linked, misanchored } = resolveAnchors(tests, corpus.entry);
-
+function reportMisanchored(context, misanchored) {
   for (const { test, anchor } of misanchored) {
     context.report({
       node: test.node.callee,
@@ -230,6 +243,13 @@ function reportTests(context, tests, corpus) {
       },
     });
   }
+}
+
+function reportTests(context, tests, corpus) {
+  const source = context.sourceCode.getText();
+  const { linked, misanchored } = resolveAnchors(tests, corpus.entry, source);
+
+  reportMisanchored(context, misanchored);
   const named = new Set(misanchored.map(({ test }) => test));
 
   for (const test of tests.filter(

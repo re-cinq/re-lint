@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.12.0
+
+- A spec link can carry the content hash of the line it cites:
+  ``[`maths.test.ts@1e7912b3`](tests/maths.test.ts#L42)`` or
+  `[validated by adds numbers @1e7912b3](…#L42)`. The hash is the first 8 hex
+  characters of the sha256 of the line lowercased with everything but `a-z0-9`
+  removed, so it is the same in any language and through reformatting. A hashed
+  link follows its hash when lines move; follows a test renamed in place
+  through the diff; and follows a test renamed and moved, also into a file git
+  says was renamed, by how much of the old line it keeps. Only a link none of
+  these find is reported.
+- `no-stale-spec-links` adds the hash to every link it touches that lacks one.
+  This is a new report, with a fix, on any branch that changes a cited file.
+  `hashAll: true` hashes links into unchanged files too, for a one-time sweep.
+  `scope: "authored"` touches only links on document lines the branch wrote, so
+  a pull request carries no link churn it did not write. `scope` replaces
+  `all`, which still works as `scope: "all"`.
+- New rule `no-rotten-spec-links`: the links nothing can repoint, without a
+  fix. The `specs` preset now runs `no-stale-spec-links` as a warning with
+  `reportUnhealable: false` and this rule as an error, so a branch fails only
+  on a link a person must repoint.
+- `require-spec-link` reads a hashed link at the line of the test file that
+  carries its hash, so a branch that moves a test keeps its link counting while
+  the `#L` waits for a later repointing pass.
+- `re-lint-reanchor` takes `--hash`, `--hash-all` and `--authored`, the same
+  three choices. Its summary line ends with `hashed` (`unhashed` under
+  `--check`) and `renamed` counts. `--check` without `--hash` behaves as before.
+- `ReanchorRepository` gains `baseFile(path)` and `renamedTo(path)`, and a
+  `Hunk` carries `newStart`. A caller that drives `createReanchorer` with its
+  own repository must add the two methods.
+
 ## 1.11.0
 
 - A `validated by` or `implemented by` title that only a `test.describe()`,
