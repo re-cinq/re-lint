@@ -22,7 +22,7 @@ import {
 } from "../rules/lib/git-worktree.mjs";
 
 const USAGE =
-  "usage: re-lint-reanchor [--check] [--all] [--corpus <glob>]... [base-ref]";
+  "usage: re-lint-reanchor [--check] [--all] [--hash] [--hash-all] [--authored] [--corpus <glob>]... [base-ref]";
 const DEFAULT_BASE_REF = "origin/main";
 
 // An unknown flag or a flag missing its value throws; null tells main to print the usage.
@@ -34,6 +34,9 @@ function parseStrict(argv) {
       options: {
         check: { type: "boolean" },
         all: { type: "boolean" },
+        hash: { type: "boolean" },
+        "hash-all": { type: "boolean" },
+        authored: { type: "boolean" },
         corpus: { type: "string", multiple: true },
       },
     });
@@ -52,6 +55,10 @@ function parseCli(argv) {
   return {
     check: parsed.values.check === true,
     all: parsed.values.all === true,
+    addHashes:
+      parsed.values.hash === true || parsed.values["hash-all"] === true,
+    hashUnchanged: parsed.values["hash-all"] === true,
+    authoredOnly: parsed.values.authored === true,
     corpus: parsed.values.corpus ?? DEFAULT_CORPUS,
     baseRef: parsed.positionals[0] ?? DEFAULT_BASE_REF,
   };

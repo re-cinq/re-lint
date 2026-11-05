@@ -44,37 +44,69 @@ export function mergeBaseOf(root, baseRef) {
 
 export const splitLines = (text) => (text ?? "").split("\n").filter(Boolean);
 
-/** The `ReanchorRepository` the re-anchorer reads: the working tree, diffed against `mergeBase`. */
-export function workingTreeRepository(root, mergeBase) {
-  const changed = new Set([
+const cached = (cache, key, load) => {
+  if (!cache.has(key)) {
+    cache.set(key, load(key));
+  }
+
+  return cache.get(key);
+};
+
+// A working-tree file's text, or null for a directory, a missing path or one outside the tree.
+const readWorking = (root, path) => {
+  const full = join(root, path);
+  const isFile =
+    !path.startsWith("..") && existsSync(full) && statSync(full).isFile();
+
+  return isFile ? readFileSync(full, "utf8") : null;
+};
+
+// Paths the branch changed or added since `mergeBase`, untracked ones included.
+const changedPaths = (root, mergeBase) =>
+  new Set([
     ...splitLines(git(root, ["diff", "--name-only", mergeBase])),
     ...splitLines(git(root, ["ls-files", "--others", "--exclude-standard"])),
   ]);
-  const files = new Map();
-  const hunks = new Map();
-  const readWorking = (path) => {
-    const full = join(root, path);
-    const isFile =
-      !path.startsWith("..") && existsSync(full) && statSync(full).isFile();
 
-    return isFile ? readFileSync(full, "utf8") : null;
-  };
-  const cached = (cache, path, load) => {
-    if (!cache.has(path)) {
-      cache.set(path, load(path));
-    }
-
-    return cache.get(path);
-  };
+/** The `ReanchorRepository` the re-anchorer reads: the working tree, diffed against `mergeBase`. */
+export function workingTreeRepository(root, mergeBase) {
+  const changed = changedPaths(root, mergeBase);
+  const caches = { files: new Map(), hunks: new Map(), base: new Map() };
+  let renames = null;
 
   return {
-    workingFile: (path) => cached(files, path, readWorking),
+    workingFile: (path) =>
+      cached(caches.files, path, () => readWorking(root, path)),
     hunks: (path) =>
-      cached(hunks, path, () =>
+      cached(caches.hunks, path, () =>
         parseHunks(git(root, ["diff", "-U0", mergeBase, "--", path]) ?? ""),
       ),
     isChanged: (path) => changed.has(path),
+    baseFile: (path) =>
+      cached(caches.base, path, () =>
+        git(root, ["show", `${mergeBase}:${path}`]),
+      ),
+    renamedTo: (path) => {
+      renames ??= renamesIn(
+        git(root, ["diff", "-M", "--name-status", mergeBase]) ?? "",
+      );
+
+      return renames.get(path) ?? [];
+    },
   };
+}
+
+/** `git diff --name-status` rename records as a map from each old path to the paths it became. */
+export function renamesIn(nameStatus) {
+  const renamed = new Map();
+
+  for (const [, from, to] of nameStatus.matchAll(
+    /^R\d*\t([^\t\n]+)\t([^\t\n]+)$/gm,
+  )) {
+    renamed.set(from, [...(renamed.get(from) ?? []), to]);
+  }
+
+  return renamed;
 }
 
 /** A document as it stood at the merge base, or null when the branch added it. */

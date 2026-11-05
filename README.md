@@ -18,13 +18,13 @@ npm i -D @re-cinq/eslint-plugin-re-lint eslint typescript-eslint
 
 Optional peers, needed only by the rules that use them:
 
-| Peer                       | Needed by                                                                                                                                            |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@stylistic/eslint-plugin` | the `recommended` preset's blank-line rules (pass it in; omitted otherwise)                                                                          |
-| `@eslint/markdown`         | the six markdown rules (`require-*`, `no-dead-md-links`, `no-stale-spec-links`, `no-ungrounded-spec-name`), which run under `language: markdown/gfm` |
-| `@eslint/css`              | `prefer-design-tokens`, which runs on stylesheets under `language: css/css`                                                                          |
-| `typescript`               | `no-forwarding-class` (type-aware; needs `parserOptions.projectService`)                                                                             |
-| `jscpd` (5.x)              | `no-duplicate-code`                                                                                                                                  |
+| Peer                       | Needed by                                                                                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@stylistic/eslint-plugin` | the `recommended` preset's blank-line rules (pass it in; omitted otherwise)                                                                                                    |
+| `@eslint/markdown`         | the seven markdown rules (`require-*`, `no-dead-md-links`, `no-stale-spec-links`, `no-rotten-spec-links`, `no-ungrounded-spec-name`), which run under `language: markdown/gfm` |
+| `@eslint/css`              | `prefer-design-tokens`, which runs on stylesheets under `language: css/css`                                                                                                    |
+| `typescript`               | `no-forwarding-class` (type-aware; needs `parserOptions.projectService`)                                                                                                       |
+| `jscpd` (5.x)              | `no-duplicate-code`                                                                                                                                                            |
 
 Node 20 or newer, ESLint 9 or newer.
 
@@ -256,16 +256,17 @@ These run on `spec.md` and ADR files under `language: "markdown/gfm"` from
 Every task creates an Issue. ([validated by](src/tasks/create.test.ts#L42))
 ```
 
-| Rule                              | Reports                                                                                                                                | Options                                                          |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `require-intro-paragraph`         | a document without a lead paragraph between its title and the first section                                                            | `roots: { spec: ["specs"], adr: ["adrs"] }`                      |
-| `require-statement-links`         | a testable statement with no `([validated by](...))` link, or whose link points at no test                                             | `roots`, `specsRoot: "."`                                        |
-| `require-status-matches-coverage` | a `\| Status \|` row that disagrees with link coverage: none is Draft, some is In Progress, all is Shipped                             | `roots`, `specsRoot: "."`                                        |
-| `no-dead-md-links`                | a markdown link to a repository file that does not exist, or a `#Lnn` past the end of the file                                         |                                                                  |
-| `no-stale-spec-links`             | a `[label](path#Lnn)` link whose anchor no longer matches where the branch moved its test (fixable); one it cannot repoint is reported | `all: false`, `baseRef: "origin/main"`, `reportUnhealable: true` |
-| `no-ungrounded-spec-name`         | a repository path the document names in backticks, or bare in a quoted passage, that is not in the repository                          | `roots`                                                          |
+| Rule                              | Reports                                                                                                                                                                         | Options                                                                                                      |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `require-intro-paragraph`         | a document without a lead paragraph between its title and the first section                                                                                                     | `roots: { spec: ["specs"], adr: ["adrs"] }`                                                                  |
+| `require-statement-links`         | a testable statement with no `([validated by](...))` link, or whose link points at no test                                                                                      | `roots`, `specsRoot: "."`                                                                                    |
+| `require-status-matches-coverage` | a `\| Status \|` row that disagrees with link coverage: none is Draft, some is In Progress, all is Shipped                                                                      | `roots`, `specsRoot: "."`                                                                                    |
+| `no-dead-md-links`                | a markdown link to a repository file that does not exist, or a `#Lnn` past the end of the file                                                                                  |                                                                                                              |
+| `no-stale-spec-links`             | a `[label](path#Lnn)` link without the content hash of its line, or whose anchor no longer matches where the branch moved its test (fixable); one it cannot repoint is reported | `scope: "changed"` (`authored`, `all`), `hashAll: false`, `baseRef: "origin/main"`, `reportUnhealable: true` |
+| `no-rotten-spec-links`            | a link whose content hash and anchor both lead nowhere in a file the branch changed, so nothing can repoint it                                                                  | `baseRef: "origin/main"`                                                                                     |
+| `no-ungrounded-spec-name`         | a repository path the document names in backticks, or bare in a quoted passage, that is not in the repository                                                                   | `roots`                                                                                                      |
 
-The `specs` preset wires all six, plus `require-spec-link` over test files,
+The `specs` preset wires all seven, plus `require-spec-link` over test files,
 the way the repository this package grew out of runs them: the three
 `require-*` document rules over `specs/**/spec.md` and `adrs/**/*.md`
 (`require-statement-links` at `warn`, so a spec still being linked does not
@@ -464,7 +465,34 @@ reason. The command's `--check` run reports the same links and exits 1.
 npx re-lint-reanchor            # rewrite drifted links against origin/main
 npx re-lint-reanchor --check    # CI: rewrite nothing, exit 1 on any finding
 npx re-lint-reanchor --all develop
+npx re-lint-reanchor --hash     # also give every touched link its content hash
+npx re-lint-reanchor --all --hash-all  # hash every link, e.g. once over a corpus
 ```
+
+### Anchor hashes
+
+A link can name its line by content as well as by number:
+``[`maths.test.ts@1e7912b3`](tests/maths.test.ts#L42)`` or
+`[validated by adds numbers @1e7912b3](tests/maths.test.ts#L42)`. The hash
+is the first 8 hex characters of the sha256 of the cited line lowercased with
+everything but `a-z0-9` removed, so it reads the same in any language and
+survives reformatting; a line too short to carry 8 such characters (`});`) is
+not hashed. The `#L42` stays for GitHub and editors to follow. A hashed link
+heals in this order: the line in the cited file carrying its hash, nearest the
+written one; the line a same-size rewrite put in its place (a test renamed
+where it stood); the one line, in the cited file or the file git says the
+branch renamed it to, keeping at least 60% of the old line's character pairs
+and clearly ahead of the next best (a test renamed and moved). The old line is
+read from the merge base. Anything else is reported. `no-stale-spec-links`
+adds the hash to a link without one; `--hash` does the same for the command.
+
+With `scope: "authored"` (`--authored`) only the links on document lines the
+branch wrote are touched, so a pull request carries no link churn it did not
+write; a job on the default branch can then repoint the rest in a pull request
+of its own, with `--all --hash-all <last processed commit>`. Configure
+`no-stale-spec-links` as a warning with `reportUnhealable: false` and
+`no-rotten-spec-links` as an error to fail a branch only on a link a person
+must repoint, which is what the `specs` preset does.
 
 - A link into a test file whose label names a test, as
   `[validated by <test title>]`, `[implemented by <test title>]` or the bare
@@ -515,7 +543,13 @@ import {
 } from "@re-cinq/eslint-plugin-re-lint/spec/spec-reanchor.js";
 
 const reanchor = createReanchorer(
-  { workingFile, hunks: (path) => parseHunks(diffOf(path)), isChanged },
+  {
+    workingFile,
+    hunks: (path) => parseHunks(diffOf(path)),
+    isChanged,
+    baseFile,
+    renamedTo,
+  },
   { check: true, all: false },
 );
 const { text, tally } = reanchor({ docPath, source, baseSource });

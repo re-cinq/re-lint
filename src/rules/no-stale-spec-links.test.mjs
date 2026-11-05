@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { RuleTester } from "eslint";
 import markdown from "@eslint/markdown";
+import { anchorHashOf } from "#spec/anchor-hash.js";
 import rule from "./no-stale-spec-links.mjs";
 
 const MATHS_TEST = [
@@ -26,6 +27,10 @@ const spec = (...links) =>
 const link = (label, target, line) => `([${label}](${target}#L${line}))`;
 const titled = (title, target, line) =>
   link(`validated by ${title}`, target, line);
+// The hash of `line` in `source`, as the fix writes it after a label.
+const hashAt = (source, line) => anchorHashOf(source.split("\n")[line - 1]);
+const hashedTitled = (title, target, line, source) =>
+  link(`validated by ${title} @${hashAt(source, line)}`, target, line);
 
 const repo = mkdtempSync(join(tmpdir(), "no-stale-spec-links-"));
 const outsideRepo = mkdtempSync(join(tmpdir(), "no-stale-spec-links-bare-"));
@@ -115,6 +120,13 @@ write(MATHS, HEADER + MATHS_TEST);
 write(REWRITTEN, MATHS_TEST.replace("expect(1 + 1)", "expect(2 + 2)"));
 
 const withBase = { baseRef: "main" };
+const MOVED_MATHS = HEADER + MATHS_TEST;
+// The message names each changed link as written, then as the fix rewrites it.
+const change = (before, after) =>
+  `${before.slice(1, -1)} -> ${after.slice(1, -1)}`;
+const addsMoved = hashedTitled("adds numbers", MATHS, 5, MOVED_MATHS);
+const subtractsMoved = hashedTitled("subtracts numbers", MATHS, 8, MOVED_MATHS);
+const addsUntouched = hashedTitled("adds numbers", UNTOUCHED, 2, MATHS_TEST);
 const ruleTester = new RuleTester({
   plugins: { markdown },
   language: "markdown/gfm",
@@ -135,6 +147,8 @@ ruleTester.run("no-stale-spec-links", rule, {
     },
     // a rotten anchor into a file the branch did not change is not this branch's
     { ...rottenUntouched, options: [withBase] },
+    // scope "authored" leaves the links on lines the branch did not write for a later pass
+    { ...moved, options: [{ ...withBase, scope: "authored" }] },
     // ... and with no merge base there is nothing to compare against
     { ...moved, options: [{ baseRef: "no-such-ref" }] },
     // a document outside any git work tree
@@ -152,18 +166,20 @@ ruleTester.run("no-stale-spec-links", rule, {
         {
           messageId: "staleLink",
           line: 3,
-          data: { moved: `${MATHS}#L2 -> #L5` },
+          data: { moved: change(titled("adds numbers", MATHS, 2), addsMoved) },
         },
         {
           messageId: "staleLink",
           line: 5,
-          data: { moved: `${MATHS}#L5 -> #L8` },
+          data: {
+            moved: change(
+              titled("subtracts numbers", MATHS, 5),
+              subtractsMoved,
+            ),
+          },
         },
       ],
-      output: spec(
-        titled("adds numbers", MATHS, 5),
-        titled("subtracts numbers", MATHS, 8),
-      ),
+      output: spec(addsMoved, subtractsMoved),
     },
     {
       // two links on one line are one report
@@ -173,17 +189,22 @@ ruleTester.run("no-stale-spec-links", rule, {
         {
           messageId: "staleLink",
           line: 3,
-          data: { moved: `${MATHS}#L2 -> #L5, ${MATHS}#L5 -> #L8` },
+          data: {
+            moved: [
+              change(titled("adds numbers", MATHS, 2), addsMoved),
+              change(titled("subtracts numbers", MATHS, 5), subtractsMoved),
+            ].join(", "),
+          },
         },
       ],
-      output: `# Maths\n\nBoth: ${titled("adds numbers", MATHS, 5)}, ${titled("subtracts numbers", MATHS, 8)}\n`,
+      output: `# Maths\n\nBoth: ${addsMoved}, ${subtractsMoved}\n`,
     },
     {
       // a bare Lnn label follows its href
       ...bareLabel,
       options: [withBase],
       errors: [{ messageId: "staleLink", line: 3 }],
-      output: spec(link("L5", MATHS, 5)),
+      output: spec(link(`L5 @${hashAt(MOVED_MATHS, 5)}`, MATHS, 5)),
     },
     {
       // a titled anchor that landed in another test moves to its own test,
@@ -194,10 +215,12 @@ ruleTester.run("no-stale-spec-links", rule, {
         {
           messageId: "staleLink",
           line: 3,
-          data: { moved: `${UNTOUCHED}#L5 -> #L2` },
+          data: {
+            moved: change(titled("adds numbers", UNTOUCHED, 5), addsUntouched),
+          },
         },
       ],
-      output: spec(titled("adds numbers", UNTOUCHED, 2)),
+      output: spec(addsUntouched),
     },
     {
       // `all` sweeps links into files the branch did not change
@@ -207,10 +230,12 @@ ruleTester.run("no-stale-spec-links", rule, {
         {
           messageId: "staleLink",
           line: 3,
-          data: { moved: `${UNTOUCHED}#L1 -> #L2` },
+          data: {
+            moved: change(titled("adds numbers", UNTOUCHED, 1), addsUntouched),
+          },
         },
       ],
-      output: spec(titled("adds numbers", UNTOUCHED, 2)),
+      output: spec(addsUntouched),
     },
     {
       // no test carries the title, so nothing can be repointed: reported, not fixed
