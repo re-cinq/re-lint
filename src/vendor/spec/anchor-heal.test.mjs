@@ -283,3 +283,19 @@ test("trades the stale :2 of a file label for the hash when it adds one", () => 
     statement(`\`a.test.ts@${anchorHashOf(ADDS)}\``, 2),
   );
 });
+
+test("hashes a link written on an edited line into a test file the branch did not change, under authoredOnly", () => {
+  const repository = fakeRepository({
+    working: { [TEST_PATH]: BASE },
+    changed: false,
+  });
+  const written = statement("validated by", 2);
+  const result = createReanchorer(repository, {
+    check: false,
+    all: false,
+    addHashes: true,
+    authoredOnly: true,
+  })({ docPath: "specs/a/spec.md", source: written, baseSource: "" });
+
+  assert.equal(result.text, hashed(2, ADDS));
+});
