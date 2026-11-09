@@ -86,3 +86,37 @@ test("unlinkedTestableStatements names the hollow statement when given the predi
     [9],
   );
 });
+
+test("counts no Sources bullet, Why this priority or Independent Test sentence, or bold label as testable, and keeps a bold requirement", () => {
+  const userStory = [
+    "# My Feature",
+    "",
+    "Intro paragraph describing the feature.",
+    "",
+    "## User Story 1 - Pay (Priority: P1)",
+    "",
+    "**Why this priority:** Payments come first. Everything else waits on them.",
+    "",
+    "**Independent Test:** Pay once. Assert one receipt.",
+    "",
+    "**Acceptance Scenarios:**",
+    "",
+    "1. **Given** a cart, **When** the payer pays, **Then** a receipt is returned. " +
+      link(14),
+    "",
+    "## Requirements",
+    "",
+    "**Receipts**",
+    "",
+    "**Never charges twice.**",
+    "",
+    "## Sources",
+    "",
+    "- `src/payments.ts`: the payment flow.",
+  ].join("\n");
+
+  assert.deepEqual(
+    statementCoverage(userStory).unlinked.map((statement) => statement.text),
+    ["**Never charges twice.**"],
+  );
+});
