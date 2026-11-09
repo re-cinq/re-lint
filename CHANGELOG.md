@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.13.0
+
+- The vendored spec classifier takes re-cinq/lore#4218's rules, so three kinds
+  of line no longer count as testable statements: a bullet under a heading that
+  is just Sources or References, every sentence of a paragraph that opens with
+  spec-kit's bold Why this priority or Independent Test label, and a line that
+  is only a bold label such as `**Acceptance Scenarios:**`. A bold line that
+  ends a sentence or names an RFC 2119 keyword is a requirement written in bold
+  and stays testable. `require-statement-links` stops asking for links on those
+  lines, and the coverage `require-status-matches-coverage` compares a spec's
+  Status against no longer counts them, so a spec whose remaining statements
+  are all linked can move up a tier on `eslint --fix`.
+
 ## 1.12.2
 
 - Under `scope: "authored"`, a link on a spec line the branch wrote is fixed
