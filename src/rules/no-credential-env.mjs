@@ -6,6 +6,10 @@
  * PRIVATE_KEY, API_KEY or CREDENTIAL anywhere in the name (case-sensitive).
  * A write or a delete is not a read: a test may arrange its environment.
  *
+ * Option `names` (default `[]`): environment variable names that count as
+ * credentials too, matched exactly (`GITHUB_APP_ID`), whatever the pattern
+ * says.
+ *
  * No path gate of its own: the consumer scopes it to the layer in question with
  * a `files:` glob.
  *
@@ -69,8 +73,8 @@ function isWrite(node) {
   );
 }
 
-function reportIfCredential(context, node, name) {
-  if (name !== null && CREDENTIAL_NAME.test(name)) {
+function reportIfCredential(context, isCredential, node, name) {
+  if (name !== null && isCredential(name)) {
     context.report({ node, messageId: "credentialEnv", data: { name } });
   }
 }
@@ -82,7 +86,20 @@ export default {
       description:
         "disallow reading an environment variable whose name looks like a credential",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: {
+          names: {
+            description:
+              "Environment variable names that are credentials besides those the pattern matches",
+            type: "array",
+            items: { type: "string" },
+          },
+        },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       credentialEnv:
         "`{{name}}` is a credential read from the environment: this layer holds none of its own. Read it in the one module that owns it, or ask the service that does.",
@@ -90,12 +107,16 @@ export default {
   },
 
   create(context) {
+    const names = context.options?.[0]?.names ?? [];
+    const isCredential = (name) =>
+      CREDENTIAL_NAME.test(name) || names.includes(name);
+
     return {
       MemberExpression(node) {
         if (isWrite(node)) {
           return;
         }
-        reportIfCredential(context, node, envNameOf(node));
+        reportIfCredential(context, isCredential, node, envNameOf(node));
       },
 
       VariableDeclarator(node) {
@@ -106,7 +127,12 @@ export default {
           return;
         }
         for (const property of node.id.properties) {
-          reportIfCredential(context, property, keyNameOf(property));
+          reportIfCredential(
+            context,
+            isCredential,
+            property,
+            keyNameOf(property),
+          );
         }
       },
     };

@@ -4,6 +4,9 @@ import rule from "./no-credential-env.mjs";
 const ruleTester = new RuleTester();
 
 const FILE = "/repo/apps/web-ui/src/lib/api-client.ts";
+const APP_IDENTIFIERS = [
+  { names: ["GITHUB_APP_ID", "GITHUB_APP_INSTALLATION_ID"] },
+];
 
 ruleTester.run("no-credential-env", rule, {
   valid: [
@@ -31,6 +34,12 @@ ruleTester.run("no-credential-env", rule, {
     {
       code: `delete process.env.LORE_INGEST_TOKEN;`,
       filename: FILE,
+    },
+    // names match exactly: a variable that merely starts the same is not listed
+    {
+      code: `const slug = process.env.GITHUB_APP_SLUG;`,
+      filename: FILE,
+      options: APP_IDENTIFIERS,
     },
   ],
   invalid: [
@@ -70,6 +79,13 @@ ruleTester.run("no-credential-env", rule, {
       errors: [
         { messageId: "credentialEnv", data: { name: "LORE_INGEST_TOKEN" } },
       ],
+    },
+    // an app id is half a credential, so a listed name counts though the pattern misses it
+    {
+      code: `const appId = process.env.GITHUB_APP_ID;`,
+      filename: FILE,
+      options: APP_IDENTIFIERS,
+      errors: [{ messageId: "credentialEnv", data: { name: "GITHUB_APP_ID" } }],
     },
   ],
 });
