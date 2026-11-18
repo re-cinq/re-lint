@@ -17,6 +17,7 @@ import noRottenSpecLinks from "./rules/no-rotten-spec-links.mjs";
 import noUngroundedSpecName from "./rules/no-ungrounded-spec-name.mjs";
 import noDuplicateCode from "./rules/no-duplicate-code.mjs";
 import noFlagParams from "./rules/no-flag-params.mjs";
+import noCredentialEnv from "./rules/no-credential-env.mjs";
 import noForbiddenImports from "./rules/no-forbidden-imports.mjs";
 import noForwardingClass from "./rules/no-forwarding-class.mjs";
 import noHybridClass from "./rules/no-hybrid-class.mjs";
@@ -68,6 +69,7 @@ const rules = {
   "no-duplicate-code": noDuplicateCode,
   "no-flag-params": noFlagParams,
   "no-forbidden-imports": noForbiddenImports,
+  "no-credential-env": noCredentialEnv,
   "no-forwarding-class": noForwardingClass,
   "no-hybrid-class": noHybridClass,
   "no-inline-styles": noInlineStyles,
@@ -115,6 +117,7 @@ export const OPT_IN_RULES = [
   "no-ungrounded-spec-name",
   "no-duplicate-code",
   "no-forbidden-imports",
+  "no-credential-env",
   "no-io-in-view",
   "no-row-types-outside-models",
   "prefer-api-error",

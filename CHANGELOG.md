@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.14.0
+
+- New rule `no-credential-env`, opt-in: a layer that holds no credential of its
+  own must not read one from the environment. It reports a read of an
+  environment variable whose name carries `TOKEN`, `SECRET`, `PASSWORD`,
+  `PRIVATE_KEY`, `API_KEY` or `CREDENTIAL`, written as `process.env.NAME`,
+  `process.env["NAME"]` or `const { NAME } = process.env`. A write or a
+  `delete` is not a read, so a test may arrange its environment. `names` lists
+  exact names that count as well (an app id is half of a credential). Like
+  `no-forbidden-imports` it has no path gate: scope it with `files:` to the
+  layer in question and turn it off for the one module that owns the
+  credential.
+
 ## 1.13.0
 
 - The vendored spec classifier takes re-cinq/lore#4218's rules, so three kinds
