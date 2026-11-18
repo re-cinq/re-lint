@@ -1,7 +1,7 @@
 /**
  * no-credential-env — a layer that holds no credential of its own must not read
- * one from the environment. Flags a read of `process.env.NAME` when NAME looks
- * like a credential: it carries TOKEN, SECRET, PASSWORD, PRIVATE_KEY, API_KEY or
+ * one from the environment. Flags a read of `process.env.NAME` or
+ * `process.env["NAME"]` when NAME looks like a credential: it carries TOKEN, SECRET, PASSWORD, PRIVATE_KEY, API_KEY or
  * CREDENTIAL anywhere in the name (case-sensitive).
  *
  * No path gate of its own: the consumer scopes it to the layer in question with
@@ -11,8 +11,7 @@
  * or asking the service that does.
  */
 
-const CREDENTIAL_NAME =
-  /TOKEN|SECRET|PASSWORD|PRIVATE_KEY|API_KEY|CREDENTIAL/;
+const CREDENTIAL_NAME = /TOKEN|SECRET|PASSWORD|PRIVATE_KEY|API_KEY|CREDENTIAL/;
 
 function isProcessEnv(node) {
   return (
@@ -24,8 +23,20 @@ function isProcessEnv(node) {
   );
 }
 
-function isEnvRead(node) {
-  return !node.computed && isProcessEnv(node.object);
+function envNameOf(node) {
+  if (!isProcessEnv(node.object)) {
+    return null;
+  }
+  if (!node.computed) {
+    return node.property.name;
+  }
+  if (
+    node.property.type === "Literal" &&
+    typeof node.property.value === "string"
+  ) {
+    return node.property.value;
+  }
+  return null;
 }
 
 export default {
@@ -45,9 +56,8 @@ export default {
   create(context) {
     return {
       MemberExpression(node) {
-        if (!isEnvRead(node)) return;
-        const name = node.property.name;
-        if (CREDENTIAL_NAME.test(name)) {
+        const name = envNameOf(node);
+        if (name !== null && CREDENTIAL_NAME.test(name)) {
           context.report({ node, messageId: "credentialEnv", data: { name } });
         }
       },
