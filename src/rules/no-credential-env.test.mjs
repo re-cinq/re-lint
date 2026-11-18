@@ -22,6 +22,16 @@ ruleTester.run("no-credential-env", rule, {
       code: `const { LORE_API_URL, ...others } = process.env;`,
       filename: FILE,
     },
+    // a test arranging its environment writes the variable, it does not read it
+    {
+      code: `process.env.LORE_INGEST_TOKEN = "test-token";`,
+      filename: FILE,
+    },
+    // a test cleaning up its environment deletes the variable, it does not read it
+    {
+      code: `delete process.env.LORE_INGEST_TOKEN;`,
+      filename: FILE,
+    },
   ],
   invalid: [
     {
@@ -51,6 +61,14 @@ ruleTester.run("no-credential-env", rule, {
           messageId: "credentialEnv",
           data: { name: "GITHUB_APP_PRIVATE_KEY" },
         },
+      ],
+    },
+    // the right-hand side of a write is still a read
+    {
+      code: `process.env.COPY = process.env.LORE_INGEST_TOKEN;`,
+      filename: FILE,
+      errors: [
+        { messageId: "credentialEnv", data: { name: "LORE_INGEST_TOKEN" } },
       ],
     },
   ],

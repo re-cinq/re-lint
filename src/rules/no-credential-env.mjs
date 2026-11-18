@@ -4,6 +4,7 @@
  * `process.env["NAME"]` or a destructuring `const { NAME } = process.env` when
  * NAME looks like a credential: it carries TOKEN, SECRET, PASSWORD,
  * PRIVATE_KEY, API_KEY or CREDENTIAL anywhere in the name (case-sensitive).
+ * A write or a delete is not a read: a test may arrange its environment.
  *
  * No path gate of its own: the consumer scopes it to the layer in question with
  * a `files:` glob.
@@ -56,6 +57,18 @@ function keyNameOf(property) {
   return null;
 }
 
+function isWrite(node) {
+  const { parent } = node;
+  if (parent.type === "AssignmentExpression") {
+    return parent.left === node && parent.operator === "=";
+  }
+  return (
+    parent.type === "UnaryExpression" &&
+    parent.operator === "delete" &&
+    parent.argument === node
+  );
+}
+
 function reportIfCredential(context, node, name) {
   if (name !== null && CREDENTIAL_NAME.test(name)) {
     context.report({ node, messageId: "credentialEnv", data: { name } });
@@ -79,6 +92,9 @@ export default {
   create(context) {
     return {
       MemberExpression(node) {
+        if (isWrite(node)) {
+          return;
+        }
         reportIfCredential(context, node, envNameOf(node));
       },
 
