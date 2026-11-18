@@ -17,6 +17,11 @@ ruleTester.run("no-credential-env", rule, {
       code: `const value = process.env[name];`,
       filename: FILE,
     },
+    // a rest element names no credential key, so there is nothing to judge
+    {
+      code: `const { LORE_API_URL, ...others } = process.env;`,
+      filename: FILE,
+    },
   ],
   invalid: [
     {
@@ -31,7 +36,21 @@ ruleTester.run("no-credential-env", rule, {
       code: `const key = process.env["GITHUB_APP_PRIVATE_KEY"];`,
       filename: FILE,
       errors: [
-        { messageId: "credentialEnv", data: { name: "GITHUB_APP_PRIVATE_KEY" } },
+        {
+          messageId: "credentialEnv",
+          data: { name: "GITHUB_APP_PRIVATE_KEY" },
+        },
+      ],
+    },
+    // a destructured key names the variable, not its alias; the sibling is harmless
+    {
+      code: `const { GITHUB_APP_PRIVATE_KEY: privateKey, LORE_API_URL } = process.env;`,
+      filename: FILE,
+      errors: [
+        {
+          messageId: "credentialEnv",
+          data: { name: "GITHUB_APP_PRIVATE_KEY" },
+        },
       ],
     },
   ],

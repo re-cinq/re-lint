@@ -1,14 +1,15 @@
 /**
  * no-credential-env — a layer that holds no credential of its own must not read
- * one from the environment. Flags a read of `process.env.NAME` or
- * `process.env["NAME"]` when NAME looks like a credential: it carries TOKEN, SECRET, PASSWORD, PRIVATE_KEY, API_KEY or
- * CREDENTIAL anywhere in the name (case-sensitive).
+ * one from the environment. Flags a read of `process.env.NAME`,
+ * `process.env["NAME"]` or a destructuring `const { NAME } = process.env` when
+ * NAME looks like a credential: it carries TOKEN, SECRET, PASSWORD,
+ * PRIVATE_KEY, API_KEY or CREDENTIAL anywhere in the name (case-sensitive).
  *
  * No path gate of its own: the consumer scopes it to the layer in question with
  * a `files:` glob.
  *
- * Detect-only: the fix is reading the credential in the one module that owns it,
- * or asking the service that does.
+ * Detect-only: the fix is reading the credential in the one module that owns
+ * it, or asking the service that does.
  */
 
 const CREDENTIAL_NAME = /TOKEN|SECRET|PASSWORD|PRIVATE_KEY|API_KEY|CREDENTIAL/;
@@ -39,6 +40,28 @@ function envNameOf(node) {
   return null;
 }
 
+function keyNameOf(property) {
+  if (property.type !== "Property") {
+    return null;
+  }
+  if (!property.computed && property.key.type === "Identifier") {
+    return property.key.name;
+  }
+  if (
+    property.key.type === "Literal" &&
+    typeof property.key.value === "string"
+  ) {
+    return property.key.value;
+  }
+  return null;
+}
+
+function reportIfCredential(context, node, name) {
+  if (name !== null && CREDENTIAL_NAME.test(name)) {
+    context.report({ node, messageId: "credentialEnv", data: { name } });
+  }
+}
+
 export default {
   meta: {
     type: "problem",
@@ -56,9 +79,18 @@ export default {
   create(context) {
     return {
       MemberExpression(node) {
-        const name = envNameOf(node);
-        if (name !== null && CREDENTIAL_NAME.test(name)) {
-          context.report({ node, messageId: "credentialEnv", data: { name } });
+        reportIfCredential(context, node, envNameOf(node));
+      },
+
+      VariableDeclarator(node) {
+        if (node.id.type !== "ObjectPattern" || !node.init) {
+          return;
+        }
+        if (!isProcessEnv(node.init)) {
+          return;
+        }
+        for (const property of node.id.properties) {
+          reportIfCredential(context, property, keyNameOf(property));
         }
       },
     };
