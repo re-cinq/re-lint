@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.15.0
+
+- Six opt-in rules about tests that push toward negative tests and exact assertions. Each is built from a shape of test that passed while the code under it was wrong.
+  - `no-weak-assertion`: a matcher that checks the shape and not the value (`toHaveLength(2)` passes with the wrong two rows), unless the same test pins the subject by value, the result is empty, or the subject is an element query.
+  - `no-vague-refusal-assertion`: a refusal any failure satisfies (`toThrow()`, `not.toBe(200)`, a status `>= 400`), which a crash or a 400 for a bad parameter also passes.
+  - `no-guard-mock-always-allows`: a file that mocks an access guard and never makes it say no, so a route that stops calling it goes unnoticed. Option `guards` names the modules.
+  - `require-refusal-test`: a test file of an entry point with no refusal test at all.
+  - `refusal-asserts-no-side-effect`: a refusal test that never shows the write did not happen.
+  - `no-stub-answers-everything`: a file that stubs `fetch` and never makes it fail, so a reader that fails soft is never caught. Meant as a warning.
+
 ## 1.14.0
 
 - New rule `no-credential-env`, opt-in: a layer that holds no credential of its

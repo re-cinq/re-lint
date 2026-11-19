@@ -16,30 +16,7 @@
  * object and which become their own test is the author's call.
  */
 
-const TEST_ROOTS = new Set(["it", "test"]);
-const TEST_MODIFIERS = new Set(["only", "skip", "each", "concurrent"]);
-
-function isTestRoot(node) {
-  return node.type === "Identifier" && TEST_ROOTS.has(node.name);
-}
-
-function isTestModifier(node) {
-  return (
-    node.type === "MemberExpression" &&
-    !node.computed &&
-    isTestRoot(node.object) &&
-    TEST_MODIFIERS.has(node.property.name)
-  );
-}
-
-function isTestCall(node) {
-  const { callee } = node;
-  if (isTestRoot(callee) || isTestModifier(callee)) {
-    return true;
-  }
-  // it.each(table)("name", fn) — the callee is itself the `it.each(...)` call
-  return callee.type === "CallExpression" && isTestModifier(callee.callee);
-}
+import { isTestCall } from "./lib/test-calls.mjs";
 
 function isExpectRootCall(node) {
   return node.callee.type === "Identifier" && node.callee.name === "expect";
