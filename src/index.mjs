@@ -18,6 +18,12 @@ import noUngroundedSpecName from "./rules/no-ungrounded-spec-name.mjs";
 import noDuplicateCode from "./rules/no-duplicate-code.mjs";
 import noFlagParams from "./rules/no-flag-params.mjs";
 import noCredentialEnv from "./rules/no-credential-env.mjs";
+import noGuardMockAlwaysAllows from "./rules/no-guard-mock-always-allows.mjs";
+import noWeakAssertion from "./rules/no-weak-assertion.mjs";
+import noVagueRefusalAssertion from "./rules/no-vague-refusal-assertion.mjs";
+import requireRefusalTest from "./rules/require-refusal-test.mjs";
+import refusalAssertsNoSideEffect from "./rules/refusal-asserts-no-side-effect.mjs";
+import noStubAnswersEverything from "./rules/no-stub-answers-everything.mjs";
 import noForbiddenImports from "./rules/no-forbidden-imports.mjs";
 import noForwardingClass from "./rules/no-forwarding-class.mjs";
 import noHybridClass from "./rules/no-hybrid-class.mjs";
@@ -70,6 +76,12 @@ const rules = {
   "no-flag-params": noFlagParams,
   "no-forbidden-imports": noForbiddenImports,
   "no-credential-env": noCredentialEnv,
+  "no-guard-mock-always-allows": noGuardMockAlwaysAllows,
+  "no-weak-assertion": noWeakAssertion,
+  "no-vague-refusal-assertion": noVagueRefusalAssertion,
+  "require-refusal-test": requireRefusalTest,
+  "refusal-asserts-no-side-effect": refusalAssertsNoSideEffect,
+  "no-stub-answers-everything": noStubAnswersEverything,
   "no-forwarding-class": noForwardingClass,
   "no-hybrid-class": noHybridClass,
   "no-inline-styles": noInlineStyles,
@@ -118,6 +130,12 @@ export const OPT_IN_RULES = [
   "no-duplicate-code",
   "no-forbidden-imports",
   "no-credential-env",
+  "no-guard-mock-always-allows",
+  "no-weak-assertion",
+  "no-vague-refusal-assertion",
+  "require-refusal-test",
+  "refusal-asserts-no-side-effect",
+  "no-stub-answers-everything",
   "no-io-in-view",
   "no-row-types-outside-models",
   "prefer-api-error",
