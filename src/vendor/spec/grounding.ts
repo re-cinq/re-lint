@@ -56,7 +56,7 @@ const FILES_TOUCHED = /files touched|project structure/i;
 const HEADING = /^#{1,6}\s/;
 /** A repository path written without backticks, as a plan quote loses them. */
 const BARE_PATH =
-  /(?<![\w/`])(?:apps|libs|specs|scripts|infra|adrs|charts|docs)\/[\w.@[\]/-]*\.[A-Za-z]{1,5}\b/g;
+  /(?<![\w/`])(?:apps|libs|specs|scripts|infra|adrs|charts|docs|deploy|tools)\/[\w.@[\]/-]*\.[A-Za-z]{1,5}\b/g;
 
 export function groundingFindings(input: GroundingInput): GroundingFinding[] {
   const lines = input.text.split("\n");
