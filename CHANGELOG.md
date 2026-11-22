@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.15.1
+
+- The vendored spec grounding reads bare `deploy/` and `tools/` paths too, as Lore's own grounding does.
+
 ## 1.15.0
 
 - Six opt-in rules about tests that push toward negative tests and exact assertions. Each is built from a shape of test that passed while the code under it was wrong.
